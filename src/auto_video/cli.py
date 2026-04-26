@@ -74,6 +74,8 @@ class ProductionManager:
                 "--format",
                 "mp4",
                 "--disable_caching",
+                "--media_dir",
+                str(bundle.project_dir / "media"),
                 str(bundle.scene_path),
                 "ProductionScene",
             ]
@@ -140,7 +142,7 @@ Please fix the script so that it runs successfully. Return ONLY the valid Python
 
                     try:
                         response = generator.client.models.generate_content(
-                            model="gemini-3-flash-preview",
+                            model=generator.model_name,
                             contents=prompt,
                             config=config,
                         )
@@ -177,8 +179,16 @@ Please fix the script so that it runs successfully. Return ONLY the valid Python
                 raise SystemExit("Final Manim rendering failed.") from exc
 
             progress.advance_stage("Vertical video rendered")
-            video_path = self.orchestrator.find_rendered_video(self.quality)
-            final_output = bundle.project_dir / f"{video_path.stem}_final.mp4"
+
+            found_videos = list(
+                (bundle.project_dir / "media").glob("**/ProductionScene.mp4")
+            )
+            if not found_videos:
+                raise FileNotFoundError("Manim failed to produce ProductionScene.mp4")
+            found_videos.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+            video_path = found_videos[0]
+
+            final_output = bundle.project_dir / f"{bundle.project_dir.name}.mp4"
 
             progress.start_export()
             progress.advance_stage("Finalizing export")

@@ -1,2 +1,43 @@
 # Added by code-review-graph
 .code-review-graph/
+.env
+.mcp.json
+.opencode.json
+.windsurfrules
+.claude
+.kiro/
+.cursor/
+.venv/
+.claude/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+env.bak/
+venv.bak/
+
+# Project Specific
+cache/
+media/
+output/
+assets/
+bin/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Editor
+.vscode/
+.idea/
+
+
+# Misc
+cache/
