@@ -52,14 +52,16 @@ Requirements:
 3. `ProductionScene` must implement `construct(self)`:
    - It MUST read from `os.environ["AUTO_VIDEO_ASSETS"]` to load `assets = json.load(open(os.environ["AUTO_VIDEO_ASSETS"]))`.
    - The scene must have an Intro, body sections looping over `assets["sections"]`, and an Outro.
-   - For the Intro, you MUST save `intro_start_time = self.renderer.time` at the very beginning. Make the intro highly animated and visually stunning. At the end of the intro, pad the exact remaining time: `remaining = (intro_start_time + VIDEO_CONFIG["intro_duration"]) - self.renderer.time` then `if remaining > 0: self.wait(remaining)`.
-   - For the Outro, you MUST save `outro_start_time = self.renderer.time` at the very beginning. Make the outro clean and well-designed. At the end of the outro, pad the exact remaining time: `remaining = (outro_start_time + VIDEO_CONFIG["outro_duration"]) - self.renderer.time` then `if remaining > 0: self.wait(remaining)`.
+   - EXACT AUDIO SYNC (CRITICAL): Audio is pre-rendered and statically concatenated. If your animations exceed their allotted durations, the video will permanently desync from the audio!
+   - For the Intro, you MUST save `intro_start_time = self.renderer.time` at the very beginning. The TOTAL `run_time` of all intro animations combined MUST be less than `VIDEO_CONFIG["intro_duration"]` (which is 4.0s). At the end of the intro, pad the exact remaining time: `remaining = (intro_start_time + VIDEO_CONFIG["intro_duration"]) - self.renderer.time` then `if remaining > 0: self.wait(remaining)`.
+   - For the Outro, you MUST save `outro_start_time = self.renderer.time` at the very beginning. The TOTAL `run_time` of all outro animations combined MUST be less than `VIDEO_CONFIG["outro_duration"]` (which is 3.0s). At the end of the outro, pad the exact remaining time: `remaining = (outro_start_time + VIDEO_CONFIG["outro_duration"]) - self.renderer.time` then `if remaining > 0: self.wait(remaining)`.
    - For body sections, dynamically create engaging animations matching the video topic!
-   - EXACT AUDIO SYNC (CRITICAL):
+   - Section EXACT AUDIO SYNC (CRITICAL):
      1. Save `section_start_time = self.renderer.time` at the start of each section.
-     2. All intro animations for the section MUST finish before `section_start_time + VIDEO_CONFIG["section_preroll"]`. Group them using `AnimationGroup(..., lag_ratio=0.1)` with `run_time=1.0` or less. If your animations take 1.0s, you must call `self.wait(VIDEO_CONFIG["section_preroll"] - 1.0)` BEFORE calling play_captions! If animations take longer than preroll, captions will break and flash instantly!
+     2. All intro animations for the section MUST finish before `section_start_time + VIDEO_CONFIG["section_preroll"]`. The TOTAL `run_time` of these animations MUST be less than `VIDEO_CONFIG["section_preroll"]` (which is 1.4s). Group them using `AnimationGroup(..., lag_ratio=0.1)` with `run_time=1.0` or less. You MUST use a single `self.play` call with a forced `run_time=1.0` to guarantee it finishes in time. Then you MUST pad the remaining preroll: `remaining_preroll = (section_start_time + VIDEO_CONFIG["section_preroll"]) - self.renderer.time` and `if remaining_preroll > 0: self.wait(remaining_preroll)` BEFORE calling `play_captions`!
      3. Call `self.play_captions(section["timing"], section_start_time=section_start_time)`.
-     4. After FadeOuts at the section end, pad the rest of the audio time using the EXACT padded duration:
+     4. After `play_captions`, play the FadeOut animations for the section (make sure `run_time` is 0.5s or less).
+     5. After FadeOuts at the section end, pad the rest of the audio time using the EXACT padded duration:
         `remaining = (section_start_time + section["padded_duration"]) - self.renderer.time`
         `if remaining > 0: self.wait(remaining)`
    - VERTICAL FORMATTING RULES: The video is VERTICAL (1080x1920, 9:16 aspect ratio). Horizontal space is strictly limited!

@@ -77,7 +77,7 @@ class BaseProductionScene(Scene):
             word_mobs = VGroup(
                 *[
                     Text(
-                        w["text"].strip().upper(),
+                        w["text"].strip().upper().replace(",", "").replace(".", ""),
                         font=THEME["font"],
                         font_size=30,
                         color=WHITE,
