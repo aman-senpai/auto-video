@@ -1,0 +1,7 @@
+manim
+mlx-audio
+whisper-timestamped
+soundfile
+numpy
+moviepy
+pyyaml

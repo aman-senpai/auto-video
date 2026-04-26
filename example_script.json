@@ -1,0 +1,17 @@
+{
+  "title": "Manim Production Demo",
+  "sections": [
+    {
+      "text": "This is a production-grade video pipeline built with Manim and Kokoro TTS.",
+      "visual": "intro"
+    },
+    {
+      "text": "It is fully optimized for Apple Silicon using MLX and hardware accelerated FFmpeg.",
+      "visual": "content"
+    },
+    {
+      "text": "Automate your social media content today with high quality vertical videos.",
+      "visual": "outro"
+    }
+  ]
+}
