@@ -10,7 +10,7 @@ class IntroScene(BaseProductionScene):
 
     def play_on(self, scene):
         title = scene.get_styled_text(self.title_text)
-        underline = Line(LEFT, RIGHT, color=THEME["secondary_color"]).scale(2).next_to(title, DOWN)
+        underline = Line(LEFT, RIGHT, color=THEME["secondary_color"]).set_width(title.get_width()).next_to(title, DOWN)
         
         scene.play(Write(title))
         scene.play(Create(underline))
@@ -30,9 +30,10 @@ class DynamicContentScene(BaseProductionScene):
         scene.add(main_text)
         
         # Captions at center
+        caption_width = scene.camera.frame_width * 0.9
         caption_box = Rectangle(
-            height=2, width=8, fill_color=BLACK, fill_opacity=0.5, stroke_width=0
-        ).shift(DOWN * 3)
+            height=1.5, width=caption_width, fill_color=BLACK, fill_opacity=0.5, stroke_width=0
+        ).to_edge(DOWN, buff=1.0)
         scene.add(caption_box)
 
         # Sync loop
@@ -42,7 +43,8 @@ class DynamicContentScene(BaseProductionScene):
             end = word_data["end"]
             
             # Create word mobject
-            word_mob = Text(word_str, font=THEME["font"], font_size=72, color=THEME["secondary_color"])
+            word_mob = Text(word_str, font=THEME["font"], font_size=60, color=THEME["secondary_color"])
+            word_mob.set_max_width(caption_width * 0.8)
             word_mob.move_to(caption_box.get_center())
             
             # Wait until start

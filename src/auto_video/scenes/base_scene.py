@@ -18,4 +18,4 @@ class BaseProductionScene(Scene):
             color=color,
             line_spacing=1.2,
             t2c={word: THEME["secondary_color"] for word in ["Manim", "Apple", "Silicon", "TikTok", "Reels"]}
-        ).set_max_width(THEME["text_width"])
+        ).set_max_width(self.camera.frame_width * THEME["text_width"])

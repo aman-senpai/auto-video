@@ -35,7 +35,7 @@ THEME = {
     "font": "Inter",              # Assuming Inter is installed
     "font_size_main": 48,
     "font_size_sub": 32,
-    "text_width": 800,
+    "text_width": 0.8,
 }
 
 # TTS & Whisper
