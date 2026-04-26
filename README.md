@@ -16,9 +16,6 @@ graph TD
     F --> |Dry-Run Loop| E
     F --> |Raw Render| G[Muxing: VideoToolbox & FFmpeg]
     G --> H[Final Vertical MP4]
-    
-    classDef engine fill:#f9f9f9,stroke:#333,stroke-width:1px;
-    class B,C,D,E,F,G engine;
 ```
 
 ## Key Features
