@@ -1,6 +1,8 @@
 # src/engine/transcription_engine.py
 import json
 import hashlib
+import contextlib
+import io
 from pathlib import Path
 import whisper_timestamped as whisper
 from auto_video.config import WHISPER_MODEL, WHISPER_DEVICE, CACHE_DIR
@@ -16,7 +18,8 @@ class TranscriptionEngine:
     def _load_model(self):
         if self.model is None:
             print(f"Loading Whisper model: {self.model_name} on {self.device}...")
-            self.model = whisper.load_model(self.model_name, device=self.device)
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                self.model = whisper.load_model(self.model_name, device=self.device)
         return self.model
 
     def transcribe(self, audio_path):
@@ -30,7 +33,8 @@ class TranscriptionEngine:
                 return json.load(f)
 
         model = self._load_model()
-        result = whisper.transcribe(model, str(audio_path), language="en")
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            result = whisper.transcribe(model, str(audio_path), language="en")
 
         # Extract word-level data
         words = []
@@ -42,6 +46,7 @@ class TranscriptionEngine:
                     "end": word["end"]
                 })
 
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
         with open(cache_path, "w") as f:
             json.dump(words, f)
 

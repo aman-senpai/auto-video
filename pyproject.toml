@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "manim>=0.18.0",
+    "google-genai>=1.70.0",
     "mlx-audio",
     "whisper-timestamped",
     "soundfile",
