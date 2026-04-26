@@ -1,85 +1,128 @@
-# AutoVideo: AI-Powered Vertical Video Generator
+# AutoVideo: Programmatic Vertical Video Generation
 
-AutoVideo is a production-grade, fully automated pipeline for generating highly engaging 9:16 vertical videos (perfect for TikTok, YouTube Shorts, and Instagram Reels). It leverages **Manim** for beautiful programmatic animations, **Gemini 3.5 Flash** for dynamic script and scene generation, **Kokoro MLX** for lifelike text-to-speech, and **Whisper** for precise word-level captioning.
+AutoVideo is a production-grade, fully automated pipeline designed to generate highly engaging 9:16 vertical videos. It leverages Manim for programmatic animations, Gemini 3.5 Flash for dynamic script and scene generation, Kokoro MLX for lifelike text-to-speech, and Whisper for precise word-level captioning.
 
-Designed from the ground up for **Apple Silicon**, this tool features a revolutionary **Self-Healing Scene Engine** that writes, tests, and fixes its own animation code iteratively before rendering.
+Built specifically for macOS and Apple Silicon, this system features a self-healing scene engine that writes, tests, and iteratively patches its own animation code before final rendering.
 
----
+## System Architecture
 
-## 🌟 Features
+```mermaid
+graph TD
+    A[CLI Input: Topic or Script] --> B[Content Engine: Gemini]
+    B --> |JSON Script| C[Audio Engine: Kokoro MLX]
+    C --> |WAV Audio| D[Transcription Engine: Whisper]
+    D --> |Timestamped Words| E[Scene Engine: Gemini]
+    E --> |Python Manim Script| F[Execution Engine: Manim]
+    F --> |Dry-Run Loop| E
+    F --> |Raw Render| G[Muxing: VideoToolbox & FFmpeg]
+    G --> H[Final Vertical MP4]
+    
+    classDef engine fill:#f9f9f9,stroke:#333,stroke-width:1px;
+    class B,C,D,E,F,G engine;
+```
 
-- **Topic-to-Video in One Command:** Provide a text prompt or topic, and the system autonomously generates the script, audio, transcription, dynamic animations, and the final compiled `.mp4`.
-- **Self-Healing Manim Generation:** Uses Gemini to dynamically write Manim Python scene code. It runs lightning-fast `--dry_run` loops to catch syntax or layout errors, iteratively fixing its own code until perfect, *before* rendering.
-- **Apple Silicon Optimized:** Hardware-accelerated pipelines using `mlx-audio` for Kokoro TTS, `mps` for Whisper transcription, and native Swift/`videotoolbox` for fast H.264 final exports.
-- **Word-Level Captions:** Precise audio-visual synchronization using `whisper-timestamped`.
-- **Smart Caching:** Audio, TTS, and transcription steps are heavily cached. Tweak your visual prompts without wasting time regenerating voiceovers.
+## Key Features
 
-## 🛠 Prerequisites & Setup
+*   **Autonomous Content Pipeline**: Provide a high-level text prompt. The system autonomously writes the script, synthesizes the voiceover, generates transcription timestamps, and renders dynamic visual scenes.
+*   **Self-Healing Manim Generation**: Employs an iterative `--dry_run` loop. If generated Python scene code fails or times out, the system pipes the stack trace back to the LLM for localized patching until execution succeeds.
+*   **Apple Silicon Optimization**: Hardware-accelerated at every stage. Utilizes `mlx-audio` for TTS, `mps` hardware targets for Whisper, and native Swift/`videotoolbox` for highly efficient H.264 encoding.
+*   **Word-Level Synchronization**: Extracts exact start and end timestamps via `whisper-timestamped` to drive perfectly timed on-screen typography and visual cues.
+*   **Granular Caching**: Intermediate assets (audio, TTS, and transcription data) are aggressively cached to ensure rapid visual iteration without redundant computational overhead.
+
+## Prerequisites & Setup
 
 ### 1. System Dependencies
-Ensure you have [Homebrew](https://brew.sh/) installed, then install the core Manim dependencies (FFmpeg, Pango, Cairo):
+
+The pipeline relies on core rendering libraries required by Manim Community. Install them via Homebrew:
+
 ```bash
 brew install ffmpeg pango pkg-config cairo
 ```
 
 ### 2. Python Environment
-This project uses [`uv`](https://github.com/astral-sh/uv) for lightning-fast dependency management.
+
+This project utilizes `uv` for dependency management and environment isolation.
+
 ```bash
-# Sync and install all dependencies
 uv sync
 ```
 
-### 3. Environment Variables
-You will need a Gemini API key to generate video scripts and power the self-healing scene engine. 
-Create a `.env` file in the root directory or export it directly in your terminal:
+### 3. Environment Configuration
+
+The self-healing scene engine and content generator require a Gemini API key. Ensure this is exported in your environment or defined in a `.env` file at the project root.
+
 ```bash
 export GEMINI_API_KEY="your_api_key_here"
 ```
 
-## 🚀 Usage
+## Usage
 
-The primary entry point is the `render` CLI command.
+The primary interface is the `render` CLI command.
 
 ### Generate from a Topic
-Pass a string describing the video you want. AutoVideo will handle the script writing, voiceover, and visual generation:
+
+To dynamically generate an entire project from a single prompt:
+
 ```bash
 uv run render "How Apple Silicon speeds up local AI video generation" --quality h
 ```
 
-### Render an Existing Script
-If you want to bypass AI content generation and use a carefully crafted JSON or YAML script:
+### Render from a Script File
+
+To bypass the AI content generation and render a deterministic JSON or YAML script:
+
 ```bash
 uv run render path/to/script.json --quality h
 ```
 
 ### CLI Arguments
-- `input_value`: The topic string OR the file path to a `.json`/`.yaml` script.
-- `--quality`: Manim rendering quality. 
-  - `l`: 480p @ 15fps (Low - Fast for previews)
-  - `m`: 720p @ 30fps (Medium)
-  - `h`: 1080p @ 60fps (High - Default for production)
-  - `p`: 1440p @ 60fps (2K)
-  - `k`: 2160p @ 60fps (4K)
-- `--voice`: Kokoro TTS voice ID (default: `af_bella`).
-- `--force-regenerate`: Ignores the media cache and forces a full rebuild of audio and transcription files.
 
-## 🧠 Architecture: How It Works
+*   `input_value`: The prompt string (for dynamic generation) or the file path to a `.json`/`.yaml` script.
+*   `--quality`: Controls the Manim rendering resolution and framerate.
+    *   `l`: 480p @ 15fps (Fast prototyping)
+    *   `m`: 720p @ 30fps (Standard)
+    *   `h`: 1080p @ 60fps (Production default)
+    *   `p`: 1440p @ 60fps (2K)
+    *   `k`: 2160p @ 60fps (4K)
+*   `--voice`: Kokoro TTS voice ID (default: `af_bella`).
+*   `--force-regenerate`: Bypasses the local cache, forcing a complete rebuild of all audio and transcription assets.
 
-1. **Content Generation:** Gemini expands your prompt into a highly structured presentation script containing a title, hook, distinct topic sections, and an outro.
-2. **Audio & Transcription:** Kokoro generates the narration, and Whisper transcribes the audio to extract exact start and end timestamps for every word.
-3. **Scene Generation:** Gemini acts as an expert Manim developer, taking the script, timings, and configuration assets to write a custom, highly animated `ProductionScene`.
-4. **Iterative Healing (Dry-Run Loop):** The code is executed via `manim render --dry_run`. If Manim fails or times out, the traceback logs are fed back to Gemini, which surgically patches the Python script. This loop repeats up to 5 times to ensure complete stability.
-5. **Final Rendering & Muxing:** Manim renders the fully validated video frames, which are then natively multiplexed with the audio stream into a final, cleanly named `.mp4` file.
+## The Self-Healing Render Loop
 
-## 🎨 Configuration & Styling
+Manim animations can be structurally complex and prone to API mismatches when generated via LLMs. AutoVideo solves this using a rapid dry-run iteration model.
 
-You can adjust global video themes, fonts, margins, and colors inside `src/auto_video/config.py`.
+```mermaid
+stateDiagram-v2
+    [*] --> LLM_Generation: Generate Manim Class
+    
+    LLM_Generation --> Subprocess_DryRun: manim render --dry_run
+    
+    Subprocess_DryRun --> Analysis: Inspect Return Code
+    
+    Analysis --> LLM_Patching: Exceptions or Timeout (Pass Stacktrace)
+    LLM_Patching --> Subprocess_DryRun
+    
+    Analysis --> Production_Render: Exit Code 0 (Success)
+    
+    Production_Render --> Final_Mux
+    Final_Mux --> [*]
+```
 
-- Edit the `THEME` dictionary to customize `primary_color`, `secondary_color`, fonts, and text sizing.
-- Ensure your custom fonts are installed at the system level on your macOS machine if you modify the `font` key.
+By enforcing a fast-failing `--dry_run` before executing the resource-intensive render phase, the system achieves high reliability in autonomous visual generation.
 
-## ⚡ Performance Tips
+## Configuration & Theming
 
-- Always use `--quality l` for rapid prototyping. It drastically speeds up iteration when testing scene logic and layouts. Switch to `--quality h` when you're ready for export.
-- Keep `WHISPER_DEVICE="mps"` in `src/auto_video/config.py` for GPU-accelerated transcription.
-- If your pipeline gets stuck using old audio assets after making sweeping script changes, pass the `--force-regenerate` flag to clear the cache.
+Global aesthetic settings are maintained in `src/auto_video/config.py`. 
+
+Modify the `THEME` mapping to adjust:
+*   `primary_color` and `secondary_color`
+*   Typography and font configurations
+*   Margin and padding scales for vertical constraints
+
+*Note: Custom fonts referenced in the configuration must be installed at the operating system level.*
+
+## Optimization Practices
+
+*   **Iterative Prototyping**: Always utilize `--quality l` when modifying scene logic or LLM prompts. This bypasses anti-aliasing and high-framerate rendering to yield feedback in seconds.
+*   **Hardware Acceleration**: Ensure `WHISPER_DEVICE="mps"` is set in your configuration to utilize the neural engine for transcription tasks.
+*   **Cache Invalidation**: When executing significant structural changes to your script text, use `--force-regenerate` to prevent temporal drift between cached audio and the updated narrative.
