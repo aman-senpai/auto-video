@@ -70,7 +70,8 @@ class BaseProductionScene(Scene):
             for i in range(0, len(valid_timing), chunk_size)
         ]
 
-        lead_time = 0.0
+        chunk_lead = 0.25
+        highlight_lead = 0.25
 
         for chunk in chunks:
             word_mobs = VGroup(
@@ -103,7 +104,7 @@ class BaseProductionScene(Scene):
             caption_group.to_edge(DOWN, buff=1.5)
 
             first_word_start = (
-                section_start_time + offset + chunk[0]["start"] - lead_time
+                section_start_time + offset + chunk[0]["start"] - chunk_lead
             )
             wait_time = first_word_start - self.renderer.time
             if wait_time > 0:
@@ -113,9 +114,11 @@ class BaseProductionScene(Scene):
 
             for i, word_data in enumerate(chunk):
                 word_start = (
-                    section_start_time + offset + word_data["start"] - lead_time
+                    section_start_time + offset + word_data["start"] - highlight_lead
                 )
-                word_end = section_start_time + offset + word_data["end"] - lead_time
+                word_end = (
+                    section_start_time + offset + word_data["end"] - highlight_lead
+                )
 
                 wait_start = word_start - self.renderer.time
                 if wait_start > 0:
