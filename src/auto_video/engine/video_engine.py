@@ -1,6 +1,8 @@
 import json
 import os
 import subprocess
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -25,10 +27,10 @@ class RenderBundle:
 
 
 class VideoOrchestrator:
-    def __init__(self, voice="af_bella"):
+    def __init__(self, voice="af_bella", llm_provider: str | None = None, llm_model: str | None = None):
         self.tts = TTSEngine()
         self.transcriber = TranscriptionEngine()
-        self.scene_generator = SceneCodeGenerator()
+        self.scene_generator = SceneCodeGenerator(provider=llm_provider, model=llm_model)
         self.voice = voice
         self._setup_manim()
 
@@ -89,44 +91,64 @@ class VideoOrchestrator:
         )
 
     def _build_assets(self, script, section_progress=None):
-        sections = []
         total_sections = len(script["sections"])
-        for index, section in enumerate(script["sections"], start=1):
+        processed_count = 0
+        progress_lock = threading.Lock()
+
+        def process_section_task(args):
+            nonlocal processed_count
+            index, section = args
+            asset = self._process_section(section)
+            
             if section_progress is not None:
-                section_progress(index, total_sections, section)
-            narration_text = section["text"]
-            audio_path = Path(self.tts.generate(narration_text, voice=self.voice))
-            words_timing = self.transcriber.transcribe(audio_path)
-            duration = sf.info(str(audio_path)).duration
-            padded_audio_path = audio_path.with_name(f"{audio_path.stem}_scene.wav")
-            self.pad_audio_for_scene(
-                audio_path,
-                padded_audio_path,
-                VIDEO_CONFIG["section_preroll"],
-                VIDEO_CONFIG["section_postroll"],
-            )
-            padded_duration = sf.info(str(padded_audio_path)).duration
-            sections.append(
-                {
-                    "headline": section.get("headline")
-                    or narration_text.split(".")[0].strip(),
-                    "text": narration_text,
-                    "bullets": section.get("bullets", []),
-                    "keywords": section.get("keywords", []),
-                    "visual": section.get("visual", "concept"),
-                    "accent_color": section.get("accent_color"),
-                    "audio": str(padded_audio_path),
-                    "timing": words_timing,
-                    "duration": duration,
-                    "padded_duration": padded_duration,
-                }
-            )
+                with progress_lock:
+                    processed_count += 1
+                    section_progress(processed_count, total_sections, section)
+            return index, asset
+
+        # Use ThreadPoolExecutor for parallel TTS and transcription
+        # Kokoro MLX and Whisper are heavy, but benefit from I/O overlap and some GIL release
+        max_workers = min(os.cpu_count() or 4, 8)
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            tasks = [(i, s) for i, s in enumerate(script["sections"], start=1)]
+            results = list(executor.map(process_section_task, tasks))
+
+        # Sort results by original index to maintain order
+        results.sort(key=lambda x: x[0])
+        sections = [r[1] for r in results]
 
         return {
             "title": script["title"],
             "hook": script.get("hook", script["title"]),
             "outro": script.get("outro", "Follow for more."),
             "sections": sections,
+        }
+
+    def _process_section(self, section):
+        narration_text = section["text"]
+        audio_path = Path(self.tts.generate(narration_text, voice=self.voice))
+        words_timing = self.transcriber.transcribe(audio_path)
+        duration = sf.info(str(audio_path)).duration
+        padded_audio_path = audio_path.with_name(f"{audio_path.stem}_scene.wav")
+        self.pad_audio_for_scene(
+            audio_path,
+            padded_audio_path,
+            VIDEO_CONFIG["section_preroll"],
+            VIDEO_CONFIG["section_postroll"],
+        )
+        padded_duration = sf.info(str(padded_audio_path)).duration
+        return {
+            "headline": section.get("headline")
+            or narration_text.split(".")[0].strip(),
+            "text": narration_text,
+            "bullets": section.get("bullets", []),
+            "keywords": section.get("keywords", []),
+            "visual": section.get("visual", "concept"),
+            "accent_color": section.get("accent_color"),
+            "audio": str(padded_audio_path),
+            "timing": words_timing,
+            "duration": duration,
+            "padded_duration": padded_duration,
         }
 
     def concatenate_audio(self, audio_paths, output_path):

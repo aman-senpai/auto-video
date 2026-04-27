@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 try:
     from rich.console import Console
+    from rich.panel import Panel
     from rich.progress import (
         BarColumn,
         Progress,
@@ -13,8 +14,10 @@ try:
         TextColumn,
         TimeElapsedColumn,
     )
+    from rich.text import Text
 except ImportError:  # pragma: no cover
     Console = None
+    Panel = None
     Progress = None
     SpinnerColumn = None
     BarColumn = None
@@ -22,6 +25,7 @@ except ImportError:  # pragma: no cover
     TaskProgressColumn = None
     TextColumn = None
     TimeElapsedColumn = None
+    Text = None
 
 
 @dataclass
@@ -105,3 +109,35 @@ class RenderProgress:
             self.console.print(message)
         else:
             print(message)
+
+    def print_banner(self):
+        if self.console is None:
+            return
+        banner = Text.assemble(
+            ("\n", ""),
+            (" A U T O ", "bold white on bright_magenta"),
+            (" V I D E O ", "bold magenta on white"),
+            ("\n", ""),
+            ("\n[italic grey50]Production-grade Manim Automation[/italic grey50]\n", ""),
+        )
+        self.console.print(Panel(banner, border_style="bright_magenta", expand=False))
+
+    def print_summary(self, summary_data: dict):
+        if self.console is None:
+            import json
+            print(json.dumps(summary_data, indent=2))
+            return
+
+        from rich.table import Table
+        table = Table(show_header=False, box=None, padding=(0, 1))
+        for key, value in summary_data.items():
+            table.add_row(f"[bold cyan]{key.replace('_', ' ').title()}:[/bold cyan]", str(value))
+
+        self.console.print(
+            Panel(
+                table,
+                title="[bold green]Production Summary[/bold green]",
+                border_style="green",
+                expand=False,
+            )
+        )

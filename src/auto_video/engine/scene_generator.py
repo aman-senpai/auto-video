@@ -3,8 +3,8 @@ import logging
 import os
 from typing import Any
 
-from google import genai
-from google.genai import types
+from .llm.base import LLMProvider
+from .llm.factory import get_llm_provider
 
 
 class SceneGenerationError(RuntimeError):
@@ -12,89 +12,257 @@ class SceneGenerationError(RuntimeError):
 
 
 class SceneCodeGenerator:
-    def __init__(self, model_name: str | None = None):
-        self.model_name = model_name or os.getenv(
-            "AUTO_VIDEO_GEMINI_MODEL", "gemini-3-flash-preview"
-        )
-        api_key = os.getenv("GEMINI_API_KEY")
-        if not api_key:
+    def __init__(self, provider: str | None = None, model: str | None = None):
+        try:
+            self.llm = get_llm_provider(provider, model)
+        except Exception as exc:
             raise SceneGenerationError(
-                "GEMINI_API_KEY is required to generate scene code."
-            )
-        self.client = genai.Client(api_key=api_key)
+                f"Failed to initialize LLM provider: {exc}"
+            ) from exc
 
     def generate_scene_code(self, script_data: dict[str, Any], topic: str) -> str:
         script_data_str = json.dumps(script_data, indent=2)
+
         prompt = f"""
-You are an expert Manim developer. Create a dynamic, highly engaging, and delightful vertical video presentation script.
-The video is about: {topic}
+You are a TOP-TIER Manim production engineer.
 
-I will provide you with the script data which contains the title, hook, outro, and sections.
-Write a complete, executable Manim Python script containing a class `ProductionScene(BaseProductionScene)` that generates a beautiful, engaging video.
+Your job is NOT to be creative.
+Your job is to EXECUTE a precise, production-grade animation system.
 
-Requirements:
-1. The script MUST import:
-   import json
-   import os
-   from manim import *
-   from manim import config as manim_config
-   from auto_video.config import VIDEO_CONFIG, THEME
-   from auto_video.scenes.base_scene import BaseProductionScene
+If you deviate from instructions, the output is considered FAILED.
 
-2. Configure Manim at the top level:
-   manim_config.pixel_height = VIDEO_CONFIG["pixel_height"]
-   manim_config.pixel_width = VIDEO_CONFIG["pixel_width"]
-   manim_config.frame_height = VIDEO_CONFIG["frame_height"]
-   manim_config.frame_width = VIDEO_CONFIG["frame_width"]
-   manim_config.frame_rate = VIDEO_CONFIG["frame_rate"]
-   manim_config.background_color = VIDEO_CONFIG["background_color"]
+---
 
-3. `ProductionScene` must implement `construct(self)`:
-   - It MUST read from `os.environ["AUTO_VIDEO_ASSETS"]` to load `assets = json.load(open(os.environ["AUTO_VIDEO_ASSETS"]))`.
-   - The scene must have an Intro, body sections looping over `assets["sections"]`, and an Outro.
-   - EXACT AUDIO SYNC (CRITICAL): Audio is pre-rendered and statically concatenated. If your animations exceed their allotted durations, the video will permanently desync from the audio!
-   - For the Intro, you MUST save `intro_start_time = self.renderer.time` at the very beginning. The TOTAL `run_time` of all intro animations combined MUST be less than `VIDEO_CONFIG["intro_duration"]` (which is 4.0s). At the end of the intro, pad the exact remaining time: `remaining = (intro_start_time + VIDEO_CONFIG["intro_duration"]) - self.renderer.time` then `if remaining > 0: self.wait(remaining)`.
-   - For the Outro, you MUST save `outro_start_time = self.renderer.time` at the very beginning. The TOTAL `run_time` of all outro animations combined MUST be less than `VIDEO_CONFIG["outro_duration"]` (which is 3.0s). At the end of the outro, pad the exact remaining time: `remaining = (outro_start_time + VIDEO_CONFIG["outro_duration"]) - self.renderer.time` then `if remaining > 0: self.wait(remaining)`.
-   - For body sections, dynamically create engaging animations matching the video topic!
-   - Section EXACT AUDIO SYNC (CRITICAL):
-     1. Save `section_start_time = self.renderer.time` at the start of each section.
-     2. All intro animations for the section MUST finish before `section_start_time + VIDEO_CONFIG["section_preroll"]`. The TOTAL `run_time` of these animations MUST be less than `VIDEO_CONFIG["section_preroll"]` (which is 1.4s). Group them using `AnimationGroup(..., lag_ratio=0.1)` with `run_time=1.0` or less. You MUST use a single `self.play` call with a forced `run_time=1.0` to guarantee it finishes in time. Then you MUST pad the remaining preroll: `remaining_preroll = (section_start_time + VIDEO_CONFIG["section_preroll"]) - self.renderer.time` and `if remaining_preroll > 0: self.wait(remaining_preroll)` BEFORE calling `play_captions`!
-     3. Call `self.play_captions(section["timing"], section_start_time=section_start_time)`.
-     4. After `play_captions`, play the FadeOut animations for the section (make sure `run_time` is 0.5s or less).
-     5. After FadeOuts at the section end, pad the rest of the audio time using the EXACT padded duration:
-        `remaining = (section_start_time + section["padded_duration"]) - self.renderer.time`
-        `if remaining > 0: self.wait(remaining)`
-   - VERTICAL FORMATTING RULES: The video is VERTICAL (1080x1920, 9:16 aspect ratio). Horizontal space is strictly limited!
-     - USE THE HELPER: You MUST use `self.get_styled_text(text, is_main=True/False)` for all long text strings (headlines, titles, hooks, bullet points) because it has built-in word wrapping. Do NOT use `Text(text)` directly for sentences.
-     - VGroups containing visualizations, charts, or bullets MUST be constrained: `if group.width > manim_config.frame_width * 0.85: group.scale_to_fit_width(manim_config.frame_width * 0.85)`
-     - Prevent overlapping: Arrange items vertically using `VGroup(...).arrange(DOWN, buff=1.0)` so they don't overlap.
-   - PERFORMANCE RULES (CRITICAL): Manim rendering can be very slow and time out. Keep animations simple and fast to render! Do NOT generate thousands of objects, complex loops, or nested structures. Stick to standard basic shapes, text, and simple transforms.
-   - AVOID COMMON API ERRORS: Use `radius` for `Sector` (not `outer_radius` or `inner_radius`), use `AnnularSector` if you need an inner radius. Always use `run_time` for animations, not `duration`. Do NOT use `SVGPathMobject` (it does not exist). Ensure compatibility with Manim Community v0.20.1.
+## 🎯 OBJECTIVE
+Generate a COMPLETE, EXECUTABLE Manim script for a vertical cinematic video on:
 
-4. Return ONLY the valid Python code. No markdown fences, no explanations. Just python code.
+TOPIC: {topic}
 
-Script Data summary for context:
+You MUST strictly follow architecture, timing, and animation rules.
+
+---
+
+## 🧠 INPUT DATA
+You are given structured script data (JSON). This is the SINGLE SOURCE OF TRUTH.
+
 {script_data_str}
-"""
-        config = types.GenerateContentConfig(
-            temperature=0.7,
-            top_p=0.9,
+
+DO NOT hallucinate extra sections.
+DO NOT modify structure.
+
+---
+
+## ⚠️ HARD CONSTRAINTS (NON-NEGOTIABLE)
+
+1. OUTPUT ONLY VALID PYTHON CODE
+   - No markdown
+   - No explanations
+   - No extra text
+
+2. CLASS SIGNATURE (MANDATORY)
+   class ProductionScene(BaseProductionScene):
+
+3. YOU MUST TRACK STATE:
+   - Use variable: current_visual
+   - NEVER leave old elements on screen
+   - ALWAYS transform OR remove
+
+4. TIMING IS STRICT:
+   - NEVER overshoot durations
+   - ALWAYS use provided sync snippets EXACTLY
+
+5. PERFORMANCE MODE:
+   - MAX 3–5 active mobjects at once
+   - NO heavy loops
+   - NO always_redraw on complex objects
+
+FAILURE TO FOLLOW ANY RULE = INVALID OUTPUT
+
+---
+
+## 🎬 ANIMATION PRINCIPLES (ENFORCED)
+
+1. PREMIUM MANIM ANIMATIONS (CRITICAL)
+   ❌ Static images, boring jump/tilt/wiggle effects.
+   ✅ Use native Manim tools: Create, Write, DrawBorderThenFill, MoveAlongPath, UpdateFromAlphaFunc, ValueTracker.
+   ✅ Build multi-stage sequences (e.g., draw axes, then plot data, then highlight).
+   ✅ Mobjects MUST have meaningful, continuous motion during the scene.
+
+2. CENTERED LAYOUT
+   ✅ Always center the combined group of your headline and visual on the screen
+
+3. CONTINUITY > CUTS
+   ❌ No slide switching
+   ✅ Use ReplacementTransform to smoothly morph the current layout into the new centered layout
+
+4. DEPTH & REVEAL
+   ✅ Use self.get_particle_field() ONCE globally
+   ✅ Use self.play_ai_reveal() for the intro elements
+
+---
+
+## 🏗️ REQUIRED CODE STRUCTURE
+
+### IMPORTS (EXACT)
+import json
+import os
+import numpy as np
+from manim import *
+from manim import config as manim_config
+from auto_video.config import VIDEO_CONFIG, THEME
+from auto_video.scenes.base_scene import BaseProductionScene
+
+---
+
+### CONFIGURATION (EXACT)
+manim_config.pixel_height = VIDEO_CONFIG["pixel_height"]
+manim_config.pixel_width = VIDEO_CONFIG["pixel_width"]
+manim_config.frame_height = VIDEO_CONFIG["frame_height"]
+manim_config.frame_width = VIDEO_CONFIG["frame_width"]
+manim_config.frame_rate = VIDEO_CONFIG["frame_rate"]
+manim_config.background_color = VIDEO_CONFIG["background_color"]
+
+---
+
+## 🧱 CORE IMPLEMENTATION TEMPLATE (MANDATORY)
+
+You MUST follow this flow EXACTLY:
+
+def construct(self):
+    assets = json.load(open(os.environ["AUTO_VIDEO_ASSETS"]))
+    self.add(self.get_particle_field())
+
+    # --- INTRO ---
+    intro_start_time = self.renderer.time
+
+    title = self.get_styled_text(assets["title"], is_main=True)
+    if title.width > manim_config.frame_width * 0.85:
+        title.scale_to_fit_width(manim_config.frame_width * 0.85)
+
+    hook = self.get_styled_text(assets["hook"], is_main=False)
+    if hook.width > manim_config.frame_width * 0.85:
+        hook.scale_to_fit_width(manim_config.frame_width * 0.85)
+
+    intro_group = VGroup(title, hook).arrange(DOWN, buff=0.8).move_to(ORIGIN + UP * 0.5)
+
+    self.play_ai_reveal(intro_group)
+    current_visual = intro_group
+
+    remaining = (intro_start_time + VIDEO_CONFIG["intro_duration"]) - self.renderer.time
+    if remaining > 0:
+        self.wait(remaining)
+
+    # --- SECTIONS ---
+    for section in assets["sections"]:
+        section_start_time = self.renderer.time
+
+        new_headline = self.get_styled_text(section["headline"], is_main=True)
+        if new_headline.width > manim_config.frame_width * 0.85:
+            new_headline.scale_to_fit_width(manim_config.frame_width * 0.85)
+
+        # VISUAL SYSTEM (CRITICAL)
+        section_visual = self.create_custom_visual(section)
+        if section_visual.width > manim_config.frame_width * 0.85:
+            section_visual.scale_to_fit_width(manim_config.frame_width * 0.85)
+
+        # Center the combined layout
+        new_group = VGroup(new_headline, section_visual).arrange(DOWN, buff=1.0)
+        new_group.move_to(ORIGIN + UP * 0.5)
+
+        self.play(
+            ReplacementTransform(current_visual, new_group),
+            run_time=1.0
         )
+        current_visual = new_group
+
+        remaining_preroll = (section_start_time + VIDEO_CONFIG["section_preroll"]) - self.renderer.time
+        if remaining_preroll > 0:
+            self.wait(remaining_preroll)
+
+        caption_container = self.start_captions(section["timing"], section_start_time=section_start_time)
+
+        # ANIMATE THE VISUAL DYNAMICALLY
+        self.play_dynamic_animations(section_visual, section["padded_duration"])
+
+        remaining = (section_start_time + section["padded_duration"]) - self.renderer.time
+        if remaining > 0:
+            self.wait(remaining)
+
+        self.clear_captions(caption_container)
+
+    # --- OUTRO ---
+    outro_start_time = self.renderer.time
+
+    outro_text = self.get_styled_text(assets["outro"], is_main=True)
+    self.play(ReplacementTransform(current_visual, outro_text))
+    current_visual = outro_text
+
+    remaining = (outro_start_time + VIDEO_CONFIG["outro_duration"]) - self.renderer.time
+    if remaining > 0:
+        self.wait(remaining)
+
+---
+
+## 🎨 VISUAL GENERATION RULES
+
+You MUST implement two functions:
+
+1. def create_custom_visual(self, section):
+   - Return ONE cohesive VGroup representing the graphic.
+   - Use Shapes (Circle, Rectangle, Arrow) and Text.
+   - Must check width: `if visual.width > manim_config.frame_width * 0.85: visual.scale_to_fit_width(manim_config.frame_width * 0.85)`
+
+2. def play_dynamic_animations(self, visual, duration):
+   - Use HIGH-QUALITY Manim animations (Create, Write, DrawBorderThenFill, Transform, FadeIn, MoveAlongPath, ValueTracker, etc).
+   - Create multi-step, engaging sequences (e.g., drawing shapes first, then animating elements moving along them or highlighting them sequentially).
+   - Avoid boring "jump" or "tilt" animations. Make it feel like a premium explanatory video.
+   - Use `self.play(...)` for animations. Ensure total `run_time` does not exceed `duration * 0.8`.
+   - Never leave the visual completely static!
+
+---
+
+## 📱 VERTICAL DESIGN RULES
+
+- ALWAYS center or stack vertically
+- NEVER overflow horizontally
+- Use spacing via .next_to()
+- Keep margins safe
+
+---
+
+## 🚀 FAILURE RECOVERY LOGIC
+
+If visual_description is unclear:
+→ fallback to clean text-based visualization
+
+If animation becomes complex:
+→ SIMPLIFY immediately
+
+NEVER skip a section.
+
+---
+
+## ✅ FINAL CHECKLIST
+
+- Code runs without modification
+- Timing is exact
+- current_visual always updated
+- No leftover objects
+- Only Python output
+
+---
+
+## 🎯 OUTPUT
+
+Return ONLY the Python script.
+"""
+
         try:
-            response = self.client.models.generate_content(
-                model=self.model_name,
-                contents=prompt,
-                config=config,
-            )
+            code = self.llm.generate_text(prompt=prompt)
         except Exception as exc:
-            raise SceneGenerationError(
-                f"Gemini scene generation failed: {exc}"
-            ) from exc
+            raise SceneGenerationError(f"Scene generation failed: {exc}") from exc
 
-        if not response.text:
-            raise SceneGenerationError("Gemini returned an empty response.")
-
-        code = response.text.strip()
+        # Clean markdown if model still outputs it
         if code.startswith("```python"):
             code = code[9:]
         elif code.startswith("```"):

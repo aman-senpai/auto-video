@@ -17,7 +17,8 @@ dependencies = [
     "num2words",
     "spacy",
     "phonemizer",
-    "espeakng-loader",
+    "openai",
+    "anthropic",
 ]
 
 [build-system]

@@ -1,9 +1,12 @@
-import argparse
 import json
 import os
 import shutil
 import subprocess
 from pathlib import Path
+from typing import Annotated, Optional
+
+import typer
+from dotenv import load_dotenv
 
 from .config import VIDEO_CONFIG
 from .engine.content_generator import ContentGenerationError, ContentGenerator
@@ -11,16 +14,30 @@ from .engine.video_engine import VideoOrchestrator
 from .progress import RenderProgress
 from .utils import is_existing_script_path, load_script, validate_script
 
+load_dotenv()
+
+app = typer.Typer(help="Production-grade Manim video automation pipeline.", add_completion=False)
+
 
 class ProductionManager:
     def __init__(
-        self, input_value, quality="h", voice="af_bella", force_regenerate=False
+        self,
+        input_value: str,
+        quality: str = "h",
+        voice: str = "af_bella",
+        force_regenerate: bool = False,
+        llm_provider: Optional[str] = None,
+        llm_model: Optional[str] = None,
     ):
         self.input_value = input_value
         self.quality = quality
         self.voice = voice
         self.force_regenerate = force_regenerate
-        self.orchestrator = VideoOrchestrator(voice=voice)
+        self.llm_provider = llm_provider
+        self.llm_model = llm_model
+        self.orchestrator = VideoOrchestrator(
+            voice=voice, llm_provider=llm_provider, llm_model=llm_model
+        )
 
     def _load_or_generate_script(self):
         if is_existing_script_path(self.input_value):
@@ -28,7 +45,7 @@ class ProductionManager:
             validate_script(script)
             return script
 
-        generator = ContentGenerator()
+        generator = ContentGenerator(provider=self.llm_provider, model=self.llm_model)
         try:
             return generator.generate_script(self.input_value)
         except ContentGenerationError as exc:
@@ -37,19 +54,23 @@ class ProductionManager:
     def run(self):
         os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
         os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
-        if self.force_regenerate:
-            # Clear manim media cache
-            cache_dir = Path("media/cache")
-            if cache_dir.exists():
-                shutil.rmtree(cache_dir)
-
-            # Transcription cache
-            trans_cache = self.orchestrator.transcriber.cache_dir
-            if trans_cache.exists():
-                shutil.rmtree(trans_cache)
 
         with RenderProgress() as progress:
-            progress.start_stages(4)
+            progress.print_banner()
+
+            if self.force_regenerate:
+                progress.print("[yellow]Force regeneration enabled. Clearing caches...[/yellow]")
+                # Clear manim media cache
+                cache_dir = Path("media/cache")
+                if cache_dir.exists():
+                    shutil.rmtree(cache_dir)
+
+                # Transcription cache
+                trans_cache = self.orchestrator.transcriber.cache_dir
+                if trans_cache.exists():
+                    shutil.rmtree(trans_cache)
+
+            progress.start_stages(5)
             script = self._load_or_generate_script()
             section_total = len(script["sections"])
             progress.start_sections(section_total)
@@ -96,7 +117,7 @@ class ProductionManager:
                         stdout=subprocess.PIPE,
                         stderr=subprocess.STDOUT,
                         text=True,
-                        timeout=60,
+                        timeout=300,
                     )
                     break
                 except (
@@ -104,6 +125,16 @@ class ProductionManager:
                     subprocess.TimeoutExpired,
                 ) as exc:
                     error_out = getattr(exc, "stdout", None) or ""
+
+                    if isinstance(exc, subprocess.TimeoutExpired):
+                        progress.print(
+                            f"[yellow]Manim timed out during validation (Attempt {attempt + 1}).[/yellow]"
+                        )
+                    else:
+                        progress.print(
+                            f"[yellow]Manim validation failed (Attempt {attempt + 1}).[/yellow]"
+                        )
+
                     if attempt == max_retries - 1:
                         progress.print(
                             f"[bold red]Manim failed after {max_retries} attempts.[/bold red]"
@@ -114,9 +145,11 @@ class ProductionManager:
                             "Video rendering failed due to Manim script errors or timeouts."
                         ) from exc
 
-                    progress.advance_stage(
-                        f"Healing scene code (Attempt {attempt + 1}/{max_retries - 1})"
-                    )
+                    if progress.progress and progress.handles.stage_task:
+                        progress.progress.update(
+                            progress.handles.stage_task,
+                            description=f"[red]Healing code ({attempt + 1}/{max_retries - 1})",
+                        )
                     with open(bundle.scene_path, "r", encoding="utf-8") as handle:
                         bad_code = handle.read()
 
@@ -133,23 +166,21 @@ The error was:
 {error_output}
 ```
 
-Please fix the script so that it runs successfully. Return ONLY the valid Python code. No markdown fences, no explanations. Just python code.
+Please fix the script so that it runs successfully.
+CRITICAL: If the error mentions 'UpdateFromAlpha', use 'UpdateFromAlphaFunc' instead. Do NOT attempt to hack builtins.
+Return ONLY the valid Python code. No markdown fences, no explanations. Just python code.
 """
                     generator = self.orchestrator.scene_generator
-                    from google.genai import types
-
-                    config = types.GenerateContentConfig(temperature=0.2, top_p=0.9)
 
                     try:
-                        response = generator.client.models.generate_content(
-                            model=generator.model_name,
-                            contents=prompt,
-                            config=config,
-                        )
+                        fixed_code = generator.llm.generate_text(prompt=prompt)
                     except Exception as e:
+                        progress.print(
+                            f"[bold red]AI Healing failed to respond:[/bold red] {e}"
+                        )
                         raise SystemExit(f"Healing failed: {e}") from e
 
-                    fixed_code = response.text.strip()
+                    fixed_code = fixed_code.strip()
                     if fixed_code.startswith("```python"):
                         fixed_code = fixed_code[9:]
                     elif fixed_code.startswith("```"):
@@ -169,13 +200,27 @@ Please fix the script so that it runs successfully. Return ONLY the valid Python
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     text=True,
-                    timeout=300,
+                    timeout=1200,
                 )
             except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
                 error_out = getattr(exc, "stdout", None) or ""
                 progress.print("[bold red]Final video rendering failed.[/bold red]")
+
+                if isinstance(exc, subprocess.TimeoutExpired):
+                    progress.print(
+                        "[red]Error: Rendering timed out after 10 minutes. The scene might be too complex.[/red]"
+                    )
+
                 if error_out:
+                    progress.print("[bold white]Manim Output logs:[/bold white]")
                     progress.print(error_out[-2000:])
+
+                debug_path = bundle.project_dir / "debug_failed_scene.py"
+                shutil.copy(bundle.scene_path, debug_path)
+                progress.print(
+                    f"[yellow]Failing scene code saved for inspection at: {debug_path}[/yellow]"
+                )
+
                 raise SystemExit("Final Manim rendering failed.") from exc
 
             progress.advance_stage("Vertical video rendered")
@@ -204,15 +249,12 @@ Please fix the script so that it runs successfully. Return ONLY the valid Python
 
             summary = {
                 "title": script["title"],
-                "script_path": str(bundle.script_path),
-                "assets_path": str(bundle.assets_path),
-                "audio_path": str(bundle.full_audio_path),
-                "video_path": str(final_output),
+                "script": str(bundle.script_path),
+                "assets": str(bundle.assets_path),
+                "audio": str(bundle.full_audio_path),
+                "video": str(final_output),
             }
-            progress.print(json.dumps(summary, indent=2))
-            progress.print(
-                f"\n[bold green]SUCCESS![/bold green] Video ready at: {final_output}"
-            )
+            progress.print_summary(summary)
 
     def _quality_settings(self):
         quality_map = {
@@ -232,30 +274,44 @@ Please fix the script so that it runs successfully. Return ONLY the valid Python
         )
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="Render a production-style vertical video from a topic or a script file.",
-    )
-    parser.add_argument(
-        "input_value",
-        help="Either a topic string to generate from Gemini, or a JSON/YAML script path.",
-    )
-    parser.add_argument("--quality", default="h", help="Manim quality (l, m, h, p, k)")
-    parser.add_argument("--voice", default="af_bella", help="Kokoro voice id")
-    parser.add_argument(
-        "--force-regenerate",
-        action="store_true",
-        help="Ignore cached script assets and regenerate audio/transcription.",
-    )
-    args = parser.parse_args()
-
+@app.command()
+def render(
+    input_value: Annotated[
+        str, typer.Argument(help="Topic string or path to script (JSON/YAML)")
+    ],
+    quality: Annotated[str, typer.Option(help="Manim quality (l, m, h, p, k)")] = "h",
+    voice: Annotated[str, typer.Option(help="Kokoro voice ID")] = "af_bella",
+    force_regenerate: Annotated[
+        bool,
+        typer.Option(
+            "--force-regenerate",
+            "--force-generate",
+            "--force",
+            "-f",
+            help="Ignore cache and regenerate all assets.",
+        ),
+    ] = False,
+    provider: Annotated[
+        Optional[str], typer.Option(help="LLM provider (gemini, openai, anthropic)")
+    ] = None,
+    model: Annotated[Optional[str], typer.Option(help="Specific LLM model name")] = None,
+):
+    """
+    Render a production-style vertical video from a topic or script.
+    """
     manager = ProductionManager(
-        args.input_value,
-        quality=args.quality,
-        voice=args.voice,
-        force_regenerate=args.force_regenerate,
+        input_value,
+        quality=quality,
+        voice=voice,
+        force_regenerate=force_regenerate,
+        llm_provider=provider,
+        llm_model=model,
     )
     manager.run()
+
+
+def main():
+    app()
 
 
 if __name__ == "__main__":
