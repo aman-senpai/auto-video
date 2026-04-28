@@ -1,12 +1,15 @@
-# src/engine/transcription_engine.py
-import json
-import hashlib
+# src/auto_video/engine/transcription_engine.py
 import contextlib
+import hashlib
 import io
+import json
 import threading
 from pathlib import Path
+
 import whisper_timestamped as whisper
-from auto_video.config import WHISPER_MODEL, WHISPER_DEVICE, CACHE_DIR
+
+from auto_video.config import CACHE_DIR, WHISPER_DEVICE, WHISPER_MODEL
+
 
 class TranscriptionEngine:
     def __init__(self, model_name=WHISPER_MODEL, device=WHISPER_DEVICE):
@@ -22,14 +25,19 @@ class TranscriptionEngine:
         with self._lock:
             if self.model is None:
                 print(f"Loading Whisper model: {self.model_name} on {self.device}...")
-                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                with (
+                    contextlib.redirect_stdout(io.StringIO()),
+                    contextlib.redirect_stderr(io.StringIO()),
+                ):
                     self.model = whisper.load_model(self.model_name, device=self.device)
             return self.model
 
     def transcribe(self, audio_path):
         """Transcribes audio with word-level timestamps."""
         audio_path = Path(audio_path)
-        cache_key = hashlib.md5(f"{audio_path.name}_{audio_path.stat().st_size}".encode()).hexdigest()
+        cache_key = hashlib.md5(
+            f"{audio_path.name}_{audio_path.stat().st_size}".encode()
+        ).hexdigest()
         cache_path = self.cache_dir / f"{cache_key}.json"
 
         if cache_path.exists():
@@ -38,18 +46,19 @@ class TranscriptionEngine:
 
         model = self._load_model()
         with self._inference_lock:
-            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            with (
+                contextlib.redirect_stdout(io.StringIO()),
+                contextlib.redirect_stderr(io.StringIO()),
+            ):
                 result = whisper.transcribe(model, str(audio_path), language="en")
 
         # Extract word-level data
         words = []
         for segment in result.get("segments", []):
             for word in segment.get("words", []):
-                words.append({
-                    "text": word["text"],
-                    "start": word["start"],
-                    "end": word["end"]
-                })
+                words.append(
+                    {"text": word["text"], "start": word["start"], "end": word["end"]}
+                )
 
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         with open(cache_path, "w") as f:

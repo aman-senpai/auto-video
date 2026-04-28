@@ -1,4 +1,4 @@
-# src/scenes/base_scene.py
+# auto-video: auto_video/scenes/base_scene.py
 import numpy as np
 from manim import *
 

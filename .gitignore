@@ -27,9 +27,9 @@ bin/
 .kiro/
 .cursor/
 .cursorrules
-AGENTS.md
-CLAUDE.md
-GEMINI.md
+docs/AGENTS.md
+docs/CLAUDE.md
+docs/GEMINI.md
 
 # macOS
 .DS_Store
