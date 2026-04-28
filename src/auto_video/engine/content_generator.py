@@ -4,6 +4,9 @@ import os
 from string import Template
 from typing import Any
 
+from auto_video.config import DEFAULT_LANGUAGE, SUPPORTED_LANGUAGES
+from auto_video.utils import validate_language
+
 from .llm.base import LLMProvider
 from .llm.factory import get_llm_provider
 
@@ -30,6 +33,7 @@ If you deviate from the schema or format, the result is INVALID.
 Generate a complete short-form educational video script.
 
 TOPIC: "$topic"
+LANGUAGE: "$language" ($language_name)
 
 ---
 
@@ -72,19 +76,23 @@ TOPIC: "$topic"
 - Max 8 words
 - High curiosity or clarity
 - No fluff
+- Must be written in $language_name
 
 2. HOOK
 - Exactly ONE sentence
 - Must create curiosity or tension
+- Must be written in $language_name
 
 3. OUTRO
 - Exactly ONE sentence
 - Must feel like a natural conclusion or CTA
+- Must be written in $language_name
 
 4. SECTIONS
 - 4 to 6 sections ONLY
 - Each section must introduce NEW information
 - Logical progression from simple → advanced
+- ALL text content must be written in $language_name
 
 ---
 
@@ -94,6 +102,7 @@ TOPIC: "$topic"
 - Avoid jargon unless explained
 - Sentences must flow naturally in TTS
 - No repetition across sections
+- Narration language: $language_name
 
 ---
 
@@ -201,6 +210,7 @@ Before output:
 - Are bullets EXACTLY 3 per section?
 - Are keywords EXACTLY 3?
 - Is visual_description detailed and continuous?
+- Is ALL text content written in $language_name?
 
 ---
 
@@ -216,22 +226,36 @@ class ContentGenerationError(RuntimeError):
 
 
 class ContentGenerator:
-    def __init__(self, provider: str | None = None, model: str | None = None):
+    def __init__(
+        self,
+        provider: str | None = None,
+        model: str | None = None,
+        language: str | None = None,
+    ):
         try:
             self.llm = get_llm_provider(provider, model)
         except Exception as exc:
             raise ContentGenerationError(
                 f"Failed to initialize LLM provider: {exc}"
             ) from exc
+        self.language = validate_language(language) if language else DEFAULT_LANGUAGE
 
     def generate_script(self, topic: str) -> dict[str, Any]:
+        lang_config = SUPPORTED_LANGUAGES[self.language]
         try:
             script = self.llm.generate_json(
                 prompt=topic,
-                system_instruction=PROMPT_TEMPLATE.substitute(topic=topic),
+                system_instruction=PROMPT_TEMPLATE.substitute(
+                    topic=topic,
+                    language=self.language,
+                    language_name=lang_config["name"],
+                ),
             )
         except Exception as exc:
             raise ContentGenerationError(f"Content generation failed: {exc}") from exc
+
+        # Add language metadata to the script
+        script["_language"] = self.language
 
         self._validate_generated_script(script)
         return script

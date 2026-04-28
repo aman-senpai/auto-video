@@ -21,6 +21,20 @@ dependencies = [
     "anthropic",
 ]
 
+[project.optional-dependencies]
+# Japanese TTS — run: uv sync --extra ja
+ja = [
+    "misaki[ja]",
+]
+# Korean TTS — run: uv sync --extra ko
+ko = [
+    "misaki[ko]",
+]
+# Chinese TTS — run: uv sync --extra zh
+zh = [
+    "misaki[zh]",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

@@ -1,5 +1,6 @@
 {
   "title": "Manim Production Demo",
+  "language": "en",
   "sections": [
     {
       "text": "This is a production-grade video pipeline built with Manim and Kokoro TTS.",

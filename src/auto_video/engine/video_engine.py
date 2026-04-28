@@ -10,11 +10,24 @@ import numpy as np
 import soundfile as sf
 from manim import config as manim_config
 
-from auto_video.config import OUTPUT_DIR, SCRIPT_OUTPUT_DIR, VIDEO_CONFIG
+from auto_video.config import (
+    DEFAULT_LANGUAGE,
+    OUTPUT_DIR,
+    SCRIPT_OUTPUT_DIR,
+    SUPPORTED_LANGUAGES,
+    VIDEO_CONFIG,
+    get_available_voices,
+    has_tts_support,
+)
 from auto_video.engine.scene_generator import SceneCodeGenerator
 from auto_video.engine.transcription_engine import TranscriptionEngine
 from auto_video.engine.tts_engine import TTSEngine
-from auto_video.utils import normalize_script, slugify
+from auto_video.utils import (
+    get_language_config,
+    normalize_script,
+    slugify,
+    validate_language,
+)
 
 
 @dataclass
@@ -27,11 +40,21 @@ class RenderBundle:
 
 
 class VideoOrchestrator:
-    def __init__(self, voice="af_bella", llm_provider: str | None = None, llm_model: str | None = None):
-        self.tts = TTSEngine()
+    def __init__(
+        self,
+        voice="af_bella",
+        llm_provider: str | None = None,
+        llm_model: str | None = None,
+        language=None,
+        tts_engine="kokoro",
+    ):
+        self.tts = TTSEngine(engine=tts_engine)
         self.transcriber = TranscriptionEngine()
-        self.scene_generator = SceneCodeGenerator(provider=llm_provider, model=llm_model)
+        self.scene_generator = SceneCodeGenerator(
+            provider=llm_provider, model=llm_model
+        )
         self.voice = voice
+        self.language = validate_language(language) if language else DEFAULT_LANGUAGE
         self._setup_manim()
 
     def _setup_manim(self):
@@ -99,7 +122,7 @@ class VideoOrchestrator:
             nonlocal processed_count
             index, section = args
             asset = self._process_section(section)
-            
+
             if section_progress is not None:
                 with progress_lock:
                     processed_count += 1
@@ -121,13 +144,42 @@ class VideoOrchestrator:
             "title": script["title"],
             "hook": script.get("hook", script["title"]),
             "outro": script.get("outro", "Follow for more."),
+            "_language": self.language,
             "sections": sections,
         }
 
     def _process_section(self, section):
         narration_text = section["text"]
-        audio_path = Path(self.tts.generate(narration_text, voice=self.voice))
-        words_timing = self.transcriber.transcribe(audio_path)
+
+        # Resolve voice based on language
+        lang_config = get_language_config(self.language)
+        voice = self.voice
+        # When language is not English and voice is still the default,
+        # automatically switch to the language's default voice
+        if self.language != DEFAULT_LANGUAGE and voice == "af_bella":
+            voice = lang_config["voice"]
+
+        # Warn if this language lacks proper TTS (only English has native support)
+        if not has_tts_support(self.language):
+            lang_name = SUPPORTED_LANGUAGES.get(self.language, {}).get(
+                "name", self.language
+            )
+            available = ", ".join(v for v in get_available_voices())
+            print(
+                f"[yellow]Warning: Kokoro-82M only has English voices ({available}). "
+                f"'{lang_name}' audio will use an English voice — pronunciation will be English-accented. "
+                f"Subtitle text and scene visuals will still render correctly.[/yellow]"
+            )
+
+        audio_path = Path(
+            self.tts.generate(
+                narration_text,
+                voice=voice,
+                language=self.language,
+                engine=self.tts.engine,
+            )
+        )
+        words_timing = self.transcriber.transcribe(audio_path, language=self.language)
         duration = sf.info(str(audio_path)).duration
         padded_audio_path = audio_path.with_name(f"{audio_path.stem}_scene.wav")
         self.pad_audio_for_scene(
@@ -138,8 +190,7 @@ class VideoOrchestrator:
         )
         padded_duration = sf.info(str(padded_audio_path)).duration
         return {
-            "headline": section.get("headline")
-            or narration_text.split(".")[0].strip(),
+            "headline": section.get("headline") or narration_text.split(".")[0].strip(),
             "text": narration_text,
             "bullets": section.get("bullets", []),
             "keywords": section.get("keywords", []),

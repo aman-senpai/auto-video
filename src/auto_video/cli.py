@@ -39,18 +39,26 @@ class ProductionManager:
         input_value: str,
         quality: str = "h",
         voice: str = "af_bella",
+        language: Optional[str] = None,
         force_regenerate: bool = False,
         llm_provider: Optional[str] = None,
         llm_model: Optional[str] = None,
+        tts_engine: str = "kokoro",
     ) -> None:
         self.input_value = input_value
         self.quality = quality
         self.voice = voice
+        self.language = language
         self.force_regenerate = force_regenerate
         self.llm_provider = llm_provider
         self.llm_model = llm_model
+        self.tts_engine = tts_engine
         self.orchestrator = VideoOrchestrator(
-            voice=voice, llm_provider=llm_provider, llm_model=llm_model
+            voice=voice,
+            llm_provider=llm_provider,
+            llm_model=llm_model,
+            language=language,
+            tts_engine=tts_engine,
         )
 
     # ── Script Loading ────────────────────────────────────────────────────
@@ -62,7 +70,9 @@ class ProductionManager:
             validate_script(script)
             return script
 
-        generator = ContentGenerator(provider=self.llm_provider, model=self.llm_model)
+        generator = ContentGenerator(
+            provider=self.llm_provider, model=self.llm_model, language=self.language
+        )
         try:
             return generator.generate_script(self.input_value)
         except ContentGenerationError as exc:
@@ -257,6 +267,7 @@ Return ONLY the valid Python code. No markdown fences, no explanations. Just pyt
                 **os.environ,
                 "AUTO_VIDEO_SCRIPT": str(bundle.script_path),
                 "AUTO_VIDEO_ASSETS": str(bundle.assets_path),
+                "AUTO_VIDEO_LANGUAGE": self.language or "en",
             }
 
             max_retries = 5
@@ -412,6 +423,12 @@ def render(
     ],
     quality: Annotated[str, typer.Option(help="Manim quality (l, m, h, p, k)")] = "h",
     voice: Annotated[str, typer.Option(help="Kokoro voice ID")] = "af_bella",
+    language: Annotated[
+        Optional[str],
+        typer.Option(
+            help="Output language code (en, es, fr, de, it, pt, ja, zh, ko, hi)"
+        ),
+    ] = None,
     force_regenerate: Annotated[
         bool,
         typer.Option(
@@ -430,15 +447,20 @@ def render(
         Optional[str],
         typer.Option(help="Specific LLM model name (e.g., gpt-4o, deepseek-v4-flash)"),
     ] = None,
+    tts_engine: Annotated[
+        str, typer.Option(help="TTS engine to use (kokoro, fish)")
+    ] = "kokoro",
 ) -> None:
     """Render a production-style vertical video from a topic or script."""
     manager = ProductionManager(
         input_value,
         quality=quality,
         voice=voice,
+        language=language,
         force_regenerate=force_regenerate,
         llm_provider=provider,
         llm_model=model,
+        tts_engine=tts_engine,
     )
     manager.run()
 

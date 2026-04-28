@@ -8,7 +8,8 @@ from pathlib import Path
 
 import whisper_timestamped as whisper
 
-from auto_video.config import CACHE_DIR, WHISPER_DEVICE, WHISPER_MODEL
+from auto_video.config import CACHE_DIR, DEFAULT_LANGUAGE, WHISPER_DEVICE, WHISPER_MODEL
+from auto_video.utils import get_language_config
 
 
 class TranscriptionEngine:
@@ -32,11 +33,18 @@ class TranscriptionEngine:
                     self.model = whisper.load_model(self.model_name, device=self.device)
             return self.model
 
-    def transcribe(self, audio_path):
+    def transcribe(self, audio_path, language=None):
         """Transcribes audio with word-level timestamps."""
+        if language is None:
+            language = DEFAULT_LANGUAGE
+
+        # Get whisper language code
+        lang_config = get_language_config(language)
+        whisper_lang = lang_config["whisper_lang"]
+
         audio_path = Path(audio_path)
         cache_key = hashlib.md5(
-            f"{audio_path.name}_{audio_path.stat().st_size}".encode()
+            f"{audio_path.name}_{audio_path.stat().st_size}_{whisper_lang}".encode()
         ).hexdigest()
         cache_path = self.cache_dir / f"{cache_key}.json"
 
@@ -50,7 +58,9 @@ class TranscriptionEngine:
                 contextlib.redirect_stdout(io.StringIO()),
                 contextlib.redirect_stderr(io.StringIO()),
             ):
-                result = whisper.transcribe(model, str(audio_path), language="en")
+                result = whisper.transcribe(
+                    model, str(audio_path), language=whisper_lang
+                )
 
         # Extract word-level data
         words = []

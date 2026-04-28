@@ -4,6 +4,8 @@ from pathlib import Path
 
 import yaml
 
+from auto_video.config import DEFAULT_LANGUAGE, SUPPORTED_LANGUAGES
+
 
 def is_existing_script_path(value):
     return Path(value).expanduser().exists()
@@ -40,7 +42,8 @@ def normalize_script(script):
     for section in script["sections"]:
         normalized["sections"].append(
             {
-                "headline": section.get("headline") or section["text"].split(".")[0].strip(),
+                "headline": section.get("headline")
+                or section["text"].split(".")[0].strip(),
                 "text": section["text"],
                 "bullets": section.get("bullets", []),
                 "keywords": section.get("keywords", []),
@@ -52,5 +55,33 @@ def normalize_script(script):
 
 
 def slugify(value):
-    cleaned = re.sub(r"[^a-zA-Z0-9]+", "_", value).strip("_").lower()
+    """Convert to a safe filename slug, preserving non-ASCII characters for multi-language support."""
+    # Allow hyphens and alphanumeric (including non-ASCII unicode)
+    cleaned = re.sub(r"[^\w\s-]", "", value).strip().lower()
+    cleaned = re.sub(r"[-\s]+", "-", cleaned)
     return cleaned or "video"
+
+
+def validate_language(lang: str) -> str:
+    """Validate and normalize a language code. Returns the normalized code or default."""
+    lang = lang.lower().strip()
+    if lang in SUPPORTED_LANGUAGES:
+        return lang
+    # Also check if it's a full language name
+    for code, info in SUPPORTED_LANGUAGES.items():
+        if info["name"].lower() == lang:
+            return code
+    supported = ", ".join(
+        f"{c} ({info['name']})" for c, info in SUPPORTED_LANGUAGES.items()
+    )
+    raise ValueError(
+        f"Unsupported language: '{lang}'. Supported languages: {supported}"
+    )
+
+
+def get_language_config(lang: str | None = None) -> dict:
+    """Get the full language configuration dict for a given language code."""
+    if lang is None:
+        lang = DEFAULT_LANGUAGE
+    lang = validate_language(lang)
+    return SUPPORTED_LANGUAGES[lang]
