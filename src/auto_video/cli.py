@@ -173,7 +173,7 @@ Return ONLY the valid Python code. No markdown fences, no explanations. Just pyt
             # ── Force Regeneration ────────────────────────────────────
             if self.force_regenerate:
                 progress.print(
-                    "[yellow]Force regeneration enabled. Clearing caches...[/yellow]"
+                    "[yellow]⚡ Force regeneration — clearing caches[/yellow]"
                 )
                 cache_dir = Path("media/cache")
                 if cache_dir.exists():
@@ -181,7 +181,7 @@ Return ONLY the valid Python code. No markdown fences, no explanations. Just pyt
                 trans_cache = self.orchestrator.transcriber.cache_dir
                 if trans_cache.exists():
                     shutil.rmtree(trans_cache)
-                progress.print("[green]Caches cleared.[/green]")
+                progress.print("[dim]Caches cleared — building fresh assets[/dim]")
 
             progress.start_stages(total=5)
 

@@ -22,6 +22,8 @@ from auto_video.utils import get_language_config
 
 
 class TTSEngine:
+    _fish_warned: bool = False  # suppress duplicate fish-speech warnings
+
     def __init__(self, model_id=None, engine="kokoro"):
         self.engine = engine
         self.model_id = model_id or (KOKORO_MODEL if engine == "kokoro" else FISH_MODEL)
@@ -105,10 +107,14 @@ class TTSEngine:
 
         audio_chunks = []
         with self._inference_lock:
-            for result in model.generate(
-                text=text, voice=voice, lang_code=lang_code, speed=speed
+            with (
+                contextlib.redirect_stdout(io.StringIO()),
+                contextlib.redirect_stderr(io.StringIO()),
             ):
-                audio_chunks.append(result.audio)
+                for result in model.generate(
+                    text=text, voice=voice, lang_code=lang_code, speed=speed
+                ):
+                    audio_chunks.append(result.audio)
 
         if not audio_chunks:
             raise RuntimeError("Kokoro TTS generation failed.")
@@ -123,8 +129,6 @@ class TTSEngine:
         If the fish-speech package is not installed, falls back to generating
         a sinusoidal placeholder so the pipeline can continue end-to-end.
         """
-        print(f"Fish Speech: Generating audio for '{language}' with voice '{voice}'...")
-
         try:
             import fish_speech
         except ImportError:
@@ -132,16 +136,17 @@ class TTSEngine:
             estimated_secs = max(2.0, len(text) / 12.0)
             n = int(estimated_secs * sample_rate)
             t = np.linspace(0, estimated_secs, n, endpoint=False)
-            # Generate a subtle carrier tone (220 Hz + 330 Hz) so Whisper can detect audio events
             audio = 0.05 * np.sin(2 * np.pi * 220 * t) + 0.03 * np.sin(
                 2 * np.pi * 330 * t
             )
             audio = audio.astype(np.float32)
             sf.write(str(output_path), audio, sample_rate)
-            print(
-                f"  [yellow]fish-speech package not installed — using placeholder tone "
-                f"({estimated_secs:.1f}s). Install with: pip install fish-speech[/yellow]"
-            )
+            if not TTSEngine._fish_warned:
+                TTSEngine._fish_warned = True
+                print(
+                    f"[yellow]fish-speech package not installed — using placeholder "
+                    f"tone. Install with: pip install fish-speech[/yellow]"
+                )
             return str(output_path)
 
         # Real Fish Speech integration path

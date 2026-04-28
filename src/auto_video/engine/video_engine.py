@@ -23,7 +23,6 @@ from auto_video.engine.scene_generator import SceneCodeGenerator
 from auto_video.engine.transcription_engine import TranscriptionEngine
 from auto_video.engine.tts_engine import TTSEngine
 from auto_video.utils import (
-    get_language_config,
     normalize_script,
     slugify,
     validate_language,
@@ -56,6 +55,31 @@ class VideoOrchestrator:
         self.voice = voice
         self.language = validate_language(language) if language else DEFAULT_LANGUAGE
         self._setup_manim()
+
+        # Warn when using Kokoro for a non-English language — it only has
+        # English voices, so pronunciation will be English-accented.
+        # Uses a throwaway Console to render Rich markup correctly even when
+        # called before the main progress context is active.
+        if self.tts.engine == "kokoro" and not has_tts_support(self.language):
+            lang_name = SUPPORTED_LANGUAGES.get(self.language, {}).get(
+                "name", self.language
+            )
+            available = ", ".join(get_available_voices())
+            try:
+                from rich.console import Console
+                Console().print(
+                    f"[yellow]Warning: Kokoro-82M only has English voices "
+                    f"({available}). '{lang_name}' audio will use an English "
+                    f"voice — pronunciation will be English-accented. Subtitle "
+                    f"text and scene visuals will still render correctly. "
+                    f"Use --tts-engine fish for native pronunciation.[/yellow]"
+                )
+            except ImportError:
+                print(
+                    f"Warning: Kokoro-82M only has English voices ({available}). "
+                    f"'{lang_name}' audio will use an English voice — pronunciation "
+                    f"will be English-accented."
+                )
 
     def _setup_manim(self):
         manim_config.pixel_height = VIDEO_CONFIG["pixel_height"]
@@ -168,25 +192,6 @@ class VideoOrchestrator:
             "_language": self.language,
             "sections": sections,
         }
-
-    def _process_section(self, section):
-        """Legacy single-section processor (kept for compatibility)."""
-        narration_text = section["text"]
-
-        # Resolve voice based on language
-        lang_config = get_language_config(self.language)
-        voice = self.voice
-
-        audio_path = Path(
-            self.tts.generate(
-                narration_text,
-                voice=voice,
-                language=self.language,
-                engine=self.tts.engine,
-            )
-        )
-        words_timing = self.transcriber.transcribe(audio_path, language=self.language)
-        return self._build_section_asset(section, audio_path, words_timing)
 
     def _build_section_asset(self, section, audio_path, words_timing):
         """Build a section asset dict from the generated audio and timing data."""
@@ -312,7 +317,6 @@ class VideoOrchestrator:
             raise RuntimeError(stderr or "Apple native exporter failed.")
         if export_progress is not None:
             export_progress(100, "Native export complete")
-        print(f"Final video saved to: {output_path}")
 
     def _finalize_video_ffmpeg(
         self, video_path, audio_path, output_path, export_progress=None
@@ -354,7 +358,6 @@ class VideoOrchestrator:
         )
         if export_progress is not None:
             export_progress(100, "Fallback export complete")
-        print(f"Final video saved to: {output_path}")
 
     def _ensure_native_exporter(self):
         source_path = Path(__file__).with_name("apple_exporter.swift")
