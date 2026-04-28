@@ -16,7 +16,9 @@ from .utils import is_existing_script_path, load_script, validate_script
 
 load_dotenv()
 
-app = typer.Typer(help="Production-grade Manim video automation pipeline.", add_completion=False)
+app = typer.Typer(
+    help="Production-grade Manim video automation pipeline.", add_completion=False
+)
 
 
 class ProductionManager:
@@ -59,7 +61,9 @@ class ProductionManager:
             progress.print_banner()
 
             if self.force_regenerate:
-                progress.print("[yellow]Force regeneration enabled. Clearing caches...[/yellow]")
+                progress.print(
+                    "[yellow]Force regeneration enabled. Clearing caches...[/yellow]"
+                )
                 # Clear manim media cache
                 cache_dir = Path("media/cache")
                 if cache_dir.exists():
@@ -292,9 +296,12 @@ def render(
         ),
     ] = False,
     provider: Annotated[
-        Optional[str], typer.Option(help="LLM provider (gemini, openai, anthropic)")
+        Optional[str],
+        typer.Option(help="LLM provider (gemini, openai, anthropic, deepseek)"),
     ] = None,
-    model: Annotated[Optional[str], typer.Option(help="Specific LLM model name")] = None,
+    model: Annotated[
+        Optional[str], typer.Option(help="Specific LLM model name")
+    ] = None,
 ):
     """
     Render a production-style vertical video from a topic or script.
