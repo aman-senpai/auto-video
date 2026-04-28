@@ -102,17 +102,44 @@ class TTSEngine:
         return str(output_path)
 
     def _generate_fish(self, text, voice, language, speed, output_path):
-        # Implementation for Fish Speech (optimized for Hindi and other global languages)
-        print(f"Fish Speech (Hindi/Global): Generating audio with voice {voice}...")
+        """Generate TTS audio using Fish Speech (optimized for Hindi and global languages).
 
-        # Placeholder for Fish Speech inference logic
-        # In a real implementation, this would call the fish-speech API or local model
-        duration = 2.0
-        sample_rate = 44100
-        audio = np.zeros(int(duration * sample_rate), dtype=np.float32)
+        If the fish-speech package is not installed, falls back to generating
+        a sinusoidal placeholder so the pipeline can continue end-to-end.
+        """
+        print(f"Fish Speech: Generating audio for '{language}' with voice '{voice}'...")
+
+        try:
+            import fish_speech
+        except ImportError:
+            sample_rate = 24000
+            estimated_secs = max(2.0, len(text) / 12.0)
+            n = int(estimated_secs * sample_rate)
+            t = np.linspace(0, estimated_secs, n, endpoint=False)
+            # Generate a subtle carrier tone (220 Hz + 330 Hz) so Whisper can detect audio events
+            audio = 0.05 * np.sin(2 * np.pi * 220 * t) + 0.03 * np.sin(
+                2 * np.pi * 330 * t
+            )
+            audio = audio.astype(np.float32)
+            sf.write(str(output_path), audio, sample_rate)
+            print(
+                f"  [yellow]fish-speech package not installed — using placeholder tone "
+                f"({estimated_secs:.1f}s). Install with: pip install fish-speech[/yellow]"
+            )
+            return str(output_path)
+
+        # Real Fish Speech integration path
+        sample_rate = 24000
+        model = self._load_model()
+        audio = model.synthesize(text, voice=voice, speed=speed)
         sf.write(str(output_path), audio, sample_rate)
-
         return str(output_path)
+
+    def _load_fish_model(self):
+        """Lazy-load the Fish Speech model (placeholder for real integration)."""
+        if self.model == "fish_model_placeholder":
+            return self.model
+        return self.model
 
     def _normalize_text(self, text, language=None):
         # Remove markdown-style brackets for all languages
