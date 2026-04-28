@@ -15,7 +15,9 @@ except ImportError:
     mx = None
     load_model = None
 
-from auto_video.config import CACHE_DIR, FISH_MODEL, KOKORO_MODEL
+from pathlib import Path
+
+from auto_video.config import CACHE_DIR, FISH_MODEL, KOKORO_MODEL, get_available_voices
 from auto_video.utils import get_language_config
 
 
@@ -87,6 +89,20 @@ class TTSEngine:
 
     def _generate_kokoro(self, text, voice, lang_code, speed, output_path):
         model = self._load_model()
+
+        # Verify the voice file exists before attempting generation
+        # Kokoro-82M only ships with 4 English voices: af_bella, af_heart, af_sarah, am_liam
+        valid_voices = get_available_voices()
+        if voice not in valid_voices:
+            fallback = "af_bella"
+            print(
+                f"  [yellow]Warning: Voice '{voice}' not found in Kokoro model. "
+                f"Falling back to '{fallback}'. "
+                f"For proper native pronunciation of non-English text, "
+                f"use --tts-engine fish instead.[/yellow]"
+            )
+            voice = fallback
+
         audio_chunks = []
         with self._inference_lock:
             for result in model.generate(

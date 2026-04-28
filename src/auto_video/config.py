@@ -41,7 +41,8 @@ WHISPER_DEVICE = "mps"
 # The Kokoro-82M model ships with only 4 English voices:
 #   af_bella, af_heart, af_sarah, am_liam
 #
-# Fish Speech 1.5 supports many more languages including Hindi natively.
+# For non-English languages, Kokoro falls back to English voices.
+# Use `--tts-engine fish` for proper native pronunciation (Hindi, etc.)
 #
 # Whisper transcription supports all listed languages natively.
 # Scene text rendering uses macOS system fonts matched to each script.
@@ -123,11 +124,11 @@ SUPPORTED_LANGUAGES = {
     },
     "hi": {
         "name": "Hindi",
-        "voice": "hindi_female_1",
+        "voice": "af_bella",
         "kokoro_lang": "a",
         "whisper_lang": "hi",
         "font": "Kohinoor Devanagari",
-        "has_tts": True,
+        "has_tts": False,
     },
 }
 
