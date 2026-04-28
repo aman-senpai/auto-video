@@ -118,10 +118,31 @@ class VideoOrchestrator:
         processed_count = 0
         progress_lock = threading.Lock()
 
+        # Pre-load Whisper model once before parallel work to avoid all threads
+        # competing to load the same model simultaneously, which causes lock contention
+        # and terminal output chaos.
+        self.transcriber._load_model()
+
         def process_section_task(args):
             nonlocal processed_count
             index, section = args
-            asset = self._process_section(section)
+            # Step 1: TTS generation (parallelizable - Kokoro model is already loaded)
+            audio_path = Path(
+                self.tts.generate(
+                    section["text"],
+                    voice=self.voice,
+                    language=self.language,
+                    engine=self.tts.engine,
+                )
+            )
+
+            # Step 2: Transcription (serialized by _inference_lock inside TranscriptionEngine)
+            words_timing = self.transcriber.transcribe(
+                audio_path, language=self.language
+            )
+
+            # Step 3: Build section asset
+            asset = self._build_section_asset(section, audio_path, words_timing)
 
             if section_progress is not None:
                 with progress_lock:
@@ -129,8 +150,8 @@ class VideoOrchestrator:
                     section_progress(processed_count, total_sections, section)
             return index, asset
 
-        # Use ThreadPoolExecutor for parallel TTS and transcription
-        # Kokoro MLX and Whisper are heavy, but benefit from I/O overlap and some GIL release
+        # Use ThreadPoolExecutor for parallel TTS generation only
+        # Transcription is already serialized internally, but TTS benefits from parallelism
         max_workers = min(os.cpu_count() or 4, 8)
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             tasks = [(i, s) for i, s in enumerate(script["sections"], start=1)]
@@ -149,27 +170,12 @@ class VideoOrchestrator:
         }
 
     def _process_section(self, section):
+        """Legacy single-section processor (kept for compatibility)."""
         narration_text = section["text"]
 
         # Resolve voice based on language
         lang_config = get_language_config(self.language)
         voice = self.voice
-        # When language is not English and voice is still the default,
-        # automatically switch to the language's default voice
-        if self.language != DEFAULT_LANGUAGE and voice == "af_bella":
-            voice = lang_config["voice"]
-
-        # Warn if this language lacks proper TTS (only English has native support)
-        if not has_tts_support(self.language):
-            lang_name = SUPPORTED_LANGUAGES.get(self.language, {}).get(
-                "name", self.language
-            )
-            available = ", ".join(v for v in get_available_voices())
-            print(
-                f"[yellow]Warning: Kokoro-82M only has English voices ({available}). "
-                f"'{lang_name}' audio will use an English voice — pronunciation will be English-accented. "
-                f"Subtitle text and scene visuals will still render correctly.[/yellow]"
-            )
 
         audio_path = Path(
             self.tts.generate(
@@ -180,6 +186,10 @@ class VideoOrchestrator:
             )
         )
         words_timing = self.transcriber.transcribe(audio_path, language=self.language)
+        return self._build_section_asset(section, audio_path, words_timing)
+
+    def _build_section_asset(self, section, audio_path, words_timing):
+        """Build a section asset dict from the generated audio and timing data."""
         duration = sf.info(str(audio_path)).duration
         padded_audio_path = audio_path.with_name(f"{audio_path.stem}_scene.wav")
         self.pad_audio_for_scene(
@@ -190,8 +200,9 @@ class VideoOrchestrator:
         )
         padded_duration = sf.info(str(padded_audio_path)).duration
         return {
-            "headline": section.get("headline") or narration_text.split(".")[0].strip(),
-            "text": narration_text,
+            "headline": section.get("headline")
+            or section["text"].split(".")[0].strip(),
+            "text": section["text"],
             "bullets": section.get("bullets", []),
             "keywords": section.get("keywords", []),
             "visual": section.get("visual", "concept"),
