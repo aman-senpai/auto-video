@@ -1,6 +1,6 @@
 # AutoVideo: Programmatic Vertical Video Generation
 
-AutoVideo is a production-grade, fully automated pipeline designed to generate highly engaging 9:16 vertical videos. It leverages **Manim** for programmatic animations, **multi-provider LLM support** (Gemini, OpenAI, Anthropic, DeepSeek) for dynamic script and scene generation, **Kokoro MLX** for lifelike text-to-speech, and **Whisper** for precise word-level captioning.
+AutoVideo is a production-grade, fully automated pipeline designed to generate highly engaging 9:16 vertical videos. It leverages **Manim** for programmatic animations, **multi-provider LLM support** (Gemini, OpenAI, Anthropic, DeepSeek) for dynamic script and scene generation, **Kokoro MLX + Fish Speech** for multi-language text-to-speech, and **Whisper** for precise word-level captioning.
 
 Built specifically for **macOS and Apple Silicon**, this system features a self-healing scene engine that writes, tests, and iteratively patches its own animation code before final rendering.
 
@@ -11,7 +11,7 @@ Built specifically for **macOS and Apple Silicon**, this system features a self-
 ```mermaid
 graph TD
     A[CLI Input: Topic or Script] --> B[Content Engine: Multi-LLM]
-    B --> |JSON Script| C[Audio Engine: Kokoro MLX]
+    B --> |JSON Script| C[Audio Engine: Kokoro MLX / Fish Speech]
     C --> |WAV Audio| D[Transcription Engine: Whisper]
     D --> |Timestamped Words| E[Scene Engine: Gemini/OpenAI/Anthropic/DeepSeek]
     E --> |Python Manim Script| F[Execution Engine: Manim]
@@ -25,9 +25,12 @@ graph TD
 ## Key Features
 
 - **Autonomous Content Pipeline** — Provide a high-level text prompt. The system autonomously writes the script, synthesizes the voiceover, generates transcription timestamps, and renders dynamic visual scenes.
+- **Multi-Language Support** — Generate videos in 10 languages including English, Hindi, Spanish, French, German, Italian, Portuguese, Japanese, Chinese, and Korean. Whisper handles transcription for all languages natively.
+- **Dual TTS Engine** — Choose between **Kokoro MLX** (English-optimized, Apple Silicon native) and **Fish Speech** (Hindi and global language support). Switch with a single CLI flag.
 - **Multi-Provider LLM Support** — Seamlessly switch between **Google Gemini**, **OpenAI**, **Anthropic Claude**, and **DeepSeek** for content generation and scene code authoring.
 - **Parallel Asset Generation** — Optimized multi-threaded pipeline for TTS and transcription, significantly reducing wait times for multi-section videos.
 - **Self-Healing Manim Generation** — Employs an iterative `--dry_run` loop. If generated Python scene code fails or times out, the system pipes the stack trace back to the LLM for localized patching until execution succeeds.
+- **Premium Visual Effects** — Built-in animation helpers (`create_glass_card`, `create_glowing_ring`, `add_drop_shadow`) for polished, production-quality scene visuals.
 - **Apple Silicon Optimization** — Hardware-accelerated at every stage. Utilizes `mlx-audio` for TTS, `mps` hardware targets for Whisper, and native Swift/`videotoolbox` for highly efficient H.264 encoding.
 - **Smart Layout Scaling** — Automatic text and element scaling to ensure perfectly framed content within vertical (9:16) constraints, preventing cropping and overlaps.
 - **Premium CLI Experience** — A beautiful, color-coded terminal interface powered by `Rich`, featuring progress bars, status banners, and detailed production summaries.
@@ -43,15 +46,15 @@ auto-video/
 │   └── auto_video/
 │       ├── __init__.py              # Package entry
 │       ├── cli.py                   # CLI entrypoint (Typer)
-│       ├── config.py                # Global settings, paths, theme
+│       ├── config.py                # Global settings, paths, theme, languages
 │       ├── progress.py              # Rich-based progress UI
-│       ├── utils.py                 # Script loading, validation, slugify
+│       ├── utils.py                 # Script loading, validation, language helpers
 │       ├── engine/                  # Pipeline orchestration
 │       │   ├── __init__.py
 │       │   ├── video_engine.py      # VideoOrchestrator (main coordinator)
 │       │   ├── content_generator.py # LLM-powered script generation
 │       │   ├── scene_generator.py   # LLM-powered Manim scene code
-│       │   ├── tts_engine.py        # Kokoro MLX text-to-speech
+│       │   ├── tts_engine.py        # Kokoro MLX + Fish Speech TTS
 │       │   ├── transcription_engine.py # Whisper word-level transcription
 │       │   ├── apple_exporter.swift # Native macOS Swift exporter
 │       │   └── llm/                 # LLM provider implementations
@@ -64,7 +67,7 @@ auto-video/
 │       │       └── deepseek_provider.py # DeepSeek (OpenAI-compatible)
 │       └── scenes/                  # Manim scene classes
 │           ├── __init__.py
-│           ├── base_scene.py        # BaseProductionScene (captions, particles)
+│           ├── base_scene.py        # BaseProductionScene (captions, particles, premium helpers)
 │           ├── main_scene.py        # ProductionScene (entry for Manim render)
 │           └── template_scenes.py   # Intro, DynamicContent, Outro scenes
 ├── tests/                           # Test suite
@@ -142,6 +145,24 @@ uv run render "The future of quantum computing" --provider anthropic --model cla
 uv run render "The future of quantum computing" --provider gemini --model gemini-3-flash-preview
 ```
 
+### Multi-Language Video Generation
+
+Generate videos in any of the 10 supported languages:
+
+```bash
+# Hindi with Fish Speech TTS
+uv run render "भारत की अर्थव्यवस्था" --language hi --tts-engine fish
+
+# Japanese (uses Kokoro for TTS, Japanese-optimized font)
+uv run render "量子コンピューティングの未来" --language ja
+
+# Spanish
+uv run render "El futuro de la computación cuántica" --language es
+
+# Chinese with custom voice
+uv run render "量子计算的未来" --language zh --voice af_bella
+```
+
 ### Render from a Script File
 
 To bypass the AI content generation and render a deterministic JSON or YAML script:
@@ -164,10 +185,12 @@ uv run render "Your topic"  # Will use DeepSeek
 | Argument | Description |
 |----------|-------------|
 | `input_value` | Topic string (for dynamic generation) or path to a `.json`/`.yaml` script file |
-| `--provider` | LLM provider: `gemini`, `openai`, `anthropic`, `claude`, or `deepseek`. Default: `gemini` |
+| `--provider` | LLM provider: `gemini`, `openai`, `anthropic`, `deepseek`. Default: `gemini` |
 | `--model` | Specific model name (e.g., `gpt-4o`, `claude-3-5-sonnet`, `deepseek-v4-pro`, `deepseek-v4-flash`) |
+| `--language` | Output language code: `en`, `es`, `fr`, `de`, `it`, `pt`, `ja`, `zh`, `ko`, `hi`. Default: `en` |
+| `--tts-engine` | TTS engine: `kokoro` (English-optimized) or `fish` (Hindi/global). Default: `kokoro` |
+| `--voice` | TTS voice ID. Kokoro voices: `af_bella`, `af_heart`, `af_sarah`, `am_liam`. Default: `af_bella` |
 | `--quality` | Manim rendering quality presets (see table below) |
-| `--voice` | Kokoro TTS voice ID. Default: `af_bella` |
 | `--force-regenerate` / `-f` | Bypass all caches and regenerate from scratch |
 
 ### Quality Presets
@@ -179,6 +202,56 @@ uv run render "Your topic"  # Will use DeepSeek
 | `h` | 1080×1920 | 60 fps | Production (default) |
 | `p` | 1440×2560 | 60 fps | 2K high quality |
 | `k` | 2160×3840 | 60 fps | 4K ultra quality |
+
+---
+
+## Language Support
+
+AutoVideo supports video generation in **10 languages**. Transcription via Whisper works natively for all of them. For TTS, English uses Kokoro MLX and Hindi uses Fish Speech; other languages are configured for future TTS model integration.
+
+| Code | Language | Font | TTS Engine | TTS Ready |
+|------|----------|------|------------|-----------|
+| `en` | English | Helvetica | Kokoro MLX | ✅ |
+| `hi` | Hindi | Kohinoor Devanagari | Fish Speech | ✅ |
+| `es` | Spanish | Helvetica | — | ⏳ |
+| `fr` | French | Helvetica | — | ⏳ |
+| `de` | German | Helvetica | — | ⏳ |
+| `it` | Italian | Helvetica | — | ⏳ |
+| `pt` | Portuguese | Helvetica | — | ⏳ |
+| `ja` | Japanese | Hiragino Sans | — | ⏳ |
+| `zh` | Chinese | PingFang SC | — | ⏳ |
+| `ko` | Korean | Apple SD Gothic Neo | — | ⏳ |
+
+Languages marked ⏳ will produce videos with Whisper transcription and on-screen text in the correct script, but TTS audio generation requires a future Fish Speech model update.
+
+---
+
+## TTS Engine Architecture
+
+AutoVideo features a **dual TTS engine** architecture, selectable at runtime:
+
+### Kokoro MLX (default)
+- **Model**: `mlx-community/Kokoro-82M-bf16` (82M parameters)
+- **Optimized for**: English (4 voices: `af_bella`, `af_heart`, `af_sarah`, `am_liam`)
+- **Hardware**: Apple Silicon only (MLX framework)
+- **Sample rate**: 24,000 Hz
+- **Selection**: `--tts-engine kokoro` (default)
+
+### Fish Speech
+- **Model**: `fishaudio/fish-speech-1.5`
+- **Optimized for**: Hindi and global/multi-language TTS
+- **Hardware**: Cross-platform
+- **Sample rate**: 44,100 Hz
+- **Selection**: `--tts-engine fish`
+- **Status**: Hindi voice is active; full model inference is being integrated
+
+```bash
+# English video with Kokoro
+uv run render "The history of the internet" --tts-engine kokoro
+
+# Hindi video with Fish Speech
+uv run render "भारत का इतिहास" --language hi --tts-engine fish
+```
 
 ---
 
@@ -255,6 +328,11 @@ Modify `VIDEO_CONFIG` to adjust:
 - Render resolution and framerate defaults
 - Intro, outro, and section timing
 
+Modify `SUPPORTED_LANGUAGES` to adjust:
+- Language-specific fonts and voices
+- Whisper language codes
+- TTS readiness flags
+
 ---
 
 ## Optimization Practices
@@ -264,6 +342,7 @@ Modify `VIDEO_CONFIG` to adjust:
 - **Hardware Acceleration** — `WHISPER_DEVICE="mps"` is the default for transcription tasks, utilizing the Apple Neural Engine via Metal Performance Shaders.
 - **Cache Management** — TTS audio and transcription results are cached in `cache/`. Use `--force-regenerate` / `-f` to clear caches and rebuild from scratch.
 - **Cost Control** — For iterative development, use `deepseek-v4-flash` or `gemini-3-flash-preview` which offer faster response times at lower cost. Reserve production models (`deepseek-v4-pro`, `gpt-4o`, `claude-3-5-sonnet`) for final renders.
+- **Language Testing** — When experimenting with non-English languages, use `--quality l` first to verify font rendering, text layout, and transcription accuracy before committing to a full production render.
 
 ---
 
@@ -273,9 +352,12 @@ Modify `VIDEO_CONFIG` to adjust:
 |---------|-------------|----------|
 | `ValueError: DEEPSEEK_API_KEY is required` | Missing API key | Add `DEEPSEEK_API_KEY` to `.env` or export it |
 | Manim validation fails repeatedly | Generated scene code has bugs | Check the debug scene saved to `output/<project>/debug_failed_scene.py` |
-| `RuntimeError: Kokoro MLX is intended for Apple Silicon` | Running on non-Apple hardware | This pipeline is designed for macOS/Apple Silicon only |
+| `RuntimeError: Kokoro MLX is intended for Apple Silicon` | Running on non-Apple hardware | This pipeline is designed for macOS/Apple Silicon only. Use `--tts-engine fish` for cross-platform TTS |
 | Slow rendering | High quality preset | Use `--quality l` during development |
 | Audio/video out of sync | Timing drift in scene code | Ensure `section_start_time` and `padded_duration` are used correctly in generated scenes |
+| Hindi TTS produces silence | Fish Speech placeholder active | Full Fish Speech inference model integration is in progress; the current placeholder outputs silence |
+| Non-English text rendering issues | Missing system font | Ensure the required font is installed on macOS (all listed fonts are system defaults). Verify via Font Book |
+| `RecursionError` in Manim scene | VGroup wrapped inside itself | Check that `add_drop_shadow()` is not called with its own parent VGroup. The LLM has been instructed to avoid this pattern |
 
 ---
 
@@ -288,6 +370,13 @@ Modify `VIDEO_CONFIG` to adjust:
 3. Register it in `factory.py` by adding a new `elif` branch
 4. Export it from `llm/__init__.py`
 
+### Adding a New Language
+
+1. Add a new entry to `SUPPORTED_LANGUAGES` in `src/auto_video/config.py` with the appropriate font, voice, and Whisper language code
+2. Set `has_tts` to `True` if the Kokoro or Fish model supports the language
+3. Update the CLI help text for `--language` in `cli.py`
+4. Add the language code to this README's language support table
+
 ### Adding a New Scene Template
 
 1. Add a new scene class in `src/auto_video/scenes/template_scenes.py`
@@ -295,4 +384,4 @@ Modify `VIDEO_CONFIG` to adjust:
 
 --- 
 
-*Built with Manim, Kokoro MLX, and ❤️ for Apple Silicon.*
+*Built with Manim, Kokoro MLX, Fish Speech, and ❤️ for Apple Silicon.*
