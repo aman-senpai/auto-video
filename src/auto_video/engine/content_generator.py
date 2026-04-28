@@ -4,8 +4,8 @@ import os
 from string import Template
 from typing import Any
 
-from .llm.factory import get_llm_provider
 from .llm.base import LLMProvider
+from .llm.factory import get_llm_provider
 
 logging.getLogger("google_genai").setLevel(logging.ERROR)
 logging.getLogger("google").setLevel(logging.ERROR)
@@ -57,7 +57,7 @@ TOPIC: "$topic"
       "text": "Natural narration for TTS, 1-3 sentences",
       "bullets": ["Short fact", "Short fact", "Short fact"],
       "keywords": ["term", "term", "term"],
-      "visual": "timeline|comparison|process|stat|concept",
+      "visual": "timeline|comparison|process|stat|concept|network|scale|cycle|hierarchy|globe|explosion",
       "accent_color": "#RRGGBB",
       "visual_description": "Cinematic transformation description"
     }
@@ -135,8 +135,16 @@ Use a mix across sections when useful:
 - process → step-by-step flow
 - stat → numbers/graphs
 - concept → abstract visualization
+- network → connected nodes/relationships
+- scale → measurement/quantification
+- cycle → circular/repeating process
+- hierarchy → tree/organizational structure
+- globe → geographical/worldwide context
+- explosion → breaking apart/expanding into parts
 
-Do NOT use the same type repeatedly without reason.
+NEVER use the same visual type twice in the same video.
+Each and every section MUST have a UNIQUE visual type.
+If you have more sections than types, invent new descriptive types beyond this list.
 
 ---
 
@@ -199,8 +207,7 @@ Before output:
 ## OUTPUT
 
 Return ONLY valid JSON.
-"""
-.strip()
+""".strip()
 )
 
 
@@ -213,7 +220,9 @@ class ContentGenerator:
         try:
             self.llm = get_llm_provider(provider, model)
         except Exception as exc:
-            raise ContentGenerationError(f"Failed to initialize LLM provider: {exc}") from exc
+            raise ContentGenerationError(
+                f"Failed to initialize LLM provider: {exc}"
+            ) from exc
 
     def generate_script(self, topic: str) -> dict[str, Any]:
         try:
@@ -222,9 +231,7 @@ class ContentGenerator:
                 system_instruction=PROMPT_TEMPLATE.substitute(topic=topic),
             )
         except Exception as exc:
-            raise ContentGenerationError(
-                f"Content generation failed: {exc}"
-            ) from exc
+            raise ContentGenerationError(f"Content generation failed: {exc}") from exc
 
         self._validate_generated_script(script)
         return script

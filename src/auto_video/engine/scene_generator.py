@@ -225,16 +225,20 @@ def construct(self):
     self.play(hook.animate.set_opacity(1), run_time=0.4)
 
     # Stage 4: Final polish
-    current_visual = VGroup(title, hook)
-    self.play(current_visual.animate.scale(1.03), rate_func=there_and_back, run_time=0.4)
+    intro_group = VGroup(title, hook)
+    self.play(intro_group.animate.scale(1.03), rate_func=there_and_back, run_time=0.4)
 
     # Fill remaining intro time (DO NOT REMOVE)
     remaining_intro = (intro_start_time + VIDEO_CONFIG["intro_duration"]) - self.renderer.time
     if remaining_intro > 0:
         self.wait(remaining_intro)
+
+    # Fade out intro completely — DO NOT transform it into sections
+    self.play(FadeOut(intro_group, shift=UP * 0.2), run_time=0.4)
     # ── END INTRO ──────────────────────────────
 
     # ── SECTIONS ───────────────────────────────
+    is_first_section = True
     for section in assets["sections"]:
         section_start_time = self.renderer.time
 
@@ -249,7 +253,13 @@ def construct(self):
         new_group = VGroup(new_headline, section_visual).arrange(DOWN, buff=1.0)
         new_group.move_to(ORIGIN + UP * 0.5)
 
-        self.play(ReplacementTransform(current_visual, new_group), run_time=1.0)
+        if is_first_section:
+            # First section appears fresh — no transform from intro
+            self.play(FadeIn(new_group, shift=UP * 0.3), run_time=0.8)
+            is_first_section = False
+        else:
+            # Subsequent sections morph smoothly from previous
+            self.play(ReplacementTransform(current_visual, new_group), run_time=1.0)
         current_visual = new_group
 
         remaining_preroll = (section_start_time + VIDEO_CONFIG["section_preroll"]) - self.renderer.time
@@ -283,11 +293,13 @@ You MUST implement these methods:
 
 ### def create_custom_visual(self, section) -> VGroup
 Return ONE cohesive VGroup (shapes + text) representing the section graphic.
-- Use Circle, Rectangle, Arrow, Text, etc.
+- **CRITICAL: Each section MUST have a UNIQUE visual** — design it based on the section's actual content (headline, bullets, keywords, visual_description), NOT just the visual type.
+- Use Circle, Rectangle, Arrow, Text, etc. Be creative with layouts specific to the content.
 - Check width: `if visual.width > manim_config.frame_width * 0.85: visual.scale_to_fit_width(...)`
 
 ### def play_dynamic_animations(self, visual, duration)
 Animate the visual with multi-step engaging sequences (Create, Write, DrawBorderThenFill, Transform, etc).
+- **CRITICAL: Each section MUST have DIFFERENT animation sequences** — vary the effects, timing, and motion direction between sections so no two sections look the same.
 - Total run_time ≤ duration × 0.8
 - Never leave the visual completely static
 
