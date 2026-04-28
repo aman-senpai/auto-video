@@ -1,3 +1,4 @@
+import numpy as np
 from manim import *
 
 from auto_video.config import THEME, VIDEO_CONFIG
@@ -19,37 +20,104 @@ class IntroScene(BaseProductionScene):
         super().__init__(**kwargs)
 
     def play_on(self, scene):
+        # --- 1. Background ambience ---
+        particles = scene.get_particle_field(count=20, color=THEME["secondary_color"])
+        for p in particles:
+            p.set_opacity(0)
+        scene.add(particles)
+        scene.play(
+            *[p.animate.set_opacity(np.random.uniform(0.15, 0.4)) for p in particles],
+            run_time=0.6,
+        )
+
+        bg_glow = Circle(
+            radius=3.5,
+            color=THEME["secondary_color"],
+            stroke_width=0,
+            fill_opacity=0.04,
+        )
+        scene.play(FadeIn(bg_glow, scale=2.0), run_time=0.5)
+
+        # --- 2. Word-by-word title reveal ---
         title = scene.get_styled_text(self.title_text)
         if title.width > scene.camera.frame_width * 0.85:
             title.scale_to_fit_width(scene.camera.frame_width * 0.85)
-
-        hook = scene.get_styled_text(self.hook_text, is_main=False)
-        if hook.width > scene.camera.frame_width * 0.85:
-            hook.scale_to_fit_width(scene.camera.frame_width * 0.85)
-
-        # Position relative to each other first
-        content = VGroup(title, hook).arrange(DOWN, buff=0.6)
-        if content.width > scene.camera.frame_width * 0.9:
-            content.scale_to_fit_width(scene.camera.frame_width * 0.9)
-
-        accent = RoundedRectangle(
-            corner_radius=0.3,
-            width=content.width + 1.2,
-            height=content.height + 1.2,
-            stroke_color=THEME["secondary_color"],
-            stroke_width=4,
-        )
-        accent.move_to(content.get_center())
-
-        group = VGroup(accent, content)
-        group.move_to(ORIGIN)
+        title.move_to(ORIGIN)
+        title.save_state()
+        title.scale(0.5).set_opacity(0)
 
         scene.play(
-            FadeIn(accent, scale=0.95), FadeIn(content, shift=UP * 0.3), run_time=0.8
+            title.animate.restore(),
+            rate_func=rate_functions.ease_out_bounce,
+            run_time=1.2,
         )
-        scene.play(accent.animate.set_stroke(THEME["accent_color"], 6), run_time=0.7)
-        scene.wait(0.9)
-        scene.play(FadeOut(group), run_time=0.6)
+        scene.wait(0.15)
+
+        # --- 3. Dynamic underline that grows from center ---
+        accent_line = Line(
+            LEFT * title.width * 0.45,
+            RIGHT * title.width * 0.45,
+            color=THEME["secondary_color"],
+            stroke_width=5,
+        )
+        accent_line.next_to(title, DOWN, buff=0.35)
+        accent_line.save_state()
+        accent_line.scale(0)
+
+        line_glow = Line(
+            LEFT * title.width * 0.45,
+            RIGHT * title.width * 0.45,
+            color=THEME["secondary_color"],
+            stroke_width=14,
+        )
+        line_glow.next_to(title, DOWN, buff=0.35)
+        line_glow.set_opacity(0.2)
+
+        scene.play(
+            accent_line.animate.restore(),
+            FadeIn(line_glow, scale=0),
+            run_time=0.5,
+        )
+
+        # --- 4. Stylish dot accent at center of line ---
+        accent_dot = Dot(
+            accent_line.get_center(),
+            color=THEME["accent_color"],
+            radius=0.08,
+        )
+        scene.play(
+            FadeIn(accent_dot, scale=3.0),
+            run_time=0.3,
+        )
+
+        # --- 5. Subtitle fades in with smooth reveal ---
+        hook = scene.get_styled_text(self.hook_text, is_main=False)
+        if hook.width > scene.camera.frame_width * 0.75:
+            hook.scale_to_fit_width(scene.camera.frame_width * 0.75)
+        hook.next_to(accent_line, DOWN, buff=0.45)
+        hook.set_opacity(0)
+
+        scene.play(
+            hook.animate.set_opacity(1),
+            run_time=0.6,
+        )
+
+        # --- 6. Final polished pulse ---
+        content_group = VGroup(title, accent_line, line_glow, accent_dot, hook, bg_glow)
+        scene.play(
+            content_group.animate.scale(1.04),
+            rate_func=there_and_back,
+            run_time=0.6,
+        )
+
+        scene.wait(0.6)
+
+        # --- 7. Clean exit ---
+        scene.play(
+            FadeOut(content_group, shift=UP * 0.3),
+            FadeOut(particles),
+            run_time=0.5,
+        )
 
 
 class DynamicContentScene(BaseProductionScene):

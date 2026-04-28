@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 
 from .config import VIDEO_CONFIG
 from .engine.content_generator import ContentGenerationError, ContentGenerator
+from .engine.scene_generator import sanitize_scene_code
 from .engine.video_engine import VideoOrchestrator
 from .progress import RenderProgress
 from .utils import is_existing_script_path, load_script, validate_script
@@ -171,7 +172,14 @@ The error was:
 ```
 
 Please fix the script so that it runs successfully.
-CRITICAL: If the error mentions 'UpdateFromAlpha', use 'UpdateFromAlphaFunc' instead. Do NOT attempt to hack builtins.
+
+COMMON FIXES:
+- If error mentions TypeError with unexpected keyword: Replace `Arrow(left=X, right=Y)` with `Arrow(start=X, end=Y)`, and `Line(left=X, right=Y)` with `Line(start=X, end=Y)`. Manim does NOT accept `left`/`right` on these classes.
+- If error mentions ImportError with 'ease_out_bounce' or any rate function: Remove the `from manim import ease_out_bounce` line. `ease_out_bounce` is in `manim.rate_functions`, NOT in `manim` directly. Use `rate_functions.ease_out_bounce` instead (available from `from manim import *`).
+- If error mentions 'UpdateFromAlpha': Use 'UpdateFromAlphaFunc' instead.
+- If error mentions 'self' positional argument: Make sure methods have `self` as first parameter.
+- Do NOT attempt to hack builtins or use monkey-patches.
+
 Return ONLY the valid Python code. No markdown fences, no explanations. Just python code.
 """
                     generator = self.orchestrator.scene_generator
@@ -191,6 +199,9 @@ Return ONLY the valid Python code. No markdown fences, no explanations. Just pyt
                         fixed_code = fixed_code[3:]
                     if fixed_code.endswith("```"):
                         fixed_code = fixed_code[:-3]
+
+                    # Sanitize healed code to fix common LLM errors
+                    fixed_code = sanitize_scene_code(fixed_code)
 
                     with open(bundle.scene_path, "w", encoding="utf-8") as handle:
                         handle.write(fixed_code.strip() + "\n")
