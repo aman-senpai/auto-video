@@ -44,5 +44,11 @@ dev = [
     "pytest",
 ]
 
+[tool.uv]
+# moviepy 2.2.1 (latest) pins pillow<12.0, but every fixed Pillow release is
+# >=12.1.1. Force the patched version; moviepy's runtime use of Pillow's
+# public API is unaffected (verified by smoke test).
+override-dependencies = ["pillow>=12.1.1"]
+
 [project.scripts]
 render = "auto_video.cli:main"
